@@ -1,0 +1,468 @@
+---
+title: "p123 RNAseq DEseq Analysis"
+author: "Eric Y. Wang"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+    html_preview: false
+  html_notebook:
+    toc: true
+    toc_float: true
+---
+
+```{r setup}
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+library(DESeq2)
+library(ComplexHeatmap)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+source("functions/plotting_fxns.R")
+theme_set(theme_Publication())
+```
+
+### [Import Data]{.underline}
+
+```{r}
+data <- read.csv("C:/Users/Eric/Documents/datasets/EYW/RNAseq_p123_240806/processed_data/RNAseq_p123_counts.csv", row.names = "X")
+
+metadata <- read_csv("C:/Users/Eric/Documents/datasets/EYW/RNAseq_p123_240806/processed_data/processed_metadata.csv")
+
+# import feature names
+featureNames <- read_tsv("C:/Users/Eric/Documents/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/features.tsv", col_names = F)
+colnames(featureNames) <- c("ensembl_ID","gene","category")
+featureNames <- select(featureNames, -category)
+```
+
+```{r}
+# remove some untreated samples to balance out groups
+metadata <- metadata %>%
+  filter(!(well %in% c("H09","H10","H12")))
+data <- data[,metadata$sample_ID]
+```
+
+
+### [DE Analysis]{.underline}
+
+```{r}
+metadata <- metadata %>%
+  mutate(treatment = factor(treatment, c("IL4_recomb","IL4_20x",
+                                            "IL6_recomb","IL6_20x",
+                                            "IL12_recomb","IL12_20x",
+                                            "untreated","p123_20x",
+                                            "p123_1e11","p123_1e10")))
+
+# prepare metadata for DESeq
+metaDF <- as.data.frame(metadata[,-1])
+rownames(metaDF) <- metadata$sample_ID
+```
+
+```{r}
+# create DEseq object
+dds <- DESeqDataSetFromMatrix(data,
+                              colData = metaDF,
+                              design = ~ treatment + replicate)
+
+# prefilter dds
+# remove any gene with fewer than 10 counts in the smallest group size
+smallestGroupSize <- 3
+keep <- rowSums(counts(dds) >= 10) >= smallestGroupSize
+dds <- dds[keep,]
+```
+
+#### Export normalized counts
+
+```{r}
+dds <- estimateSizeFactors(dds)
+```
+
+```{r}
+normCounts <- counts(dds, normalized=T) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames)
+
+# write_csv(normCounts, "analysis_outs/counts_norm_DEseq2.csv")
+```
+
+
+
+#### Assess sample similarity
+
+First, we'll perform PCA analysis to look at the overall similarity between samples.
+
+```{r}
+# perform VST normalization
+# essentially normalizes to library size while stabilizing variance for lowly expressed genes
+ddsNorm <- vst(dds)
+```
+
+```{r, fig.height=10, fig.width=12}
+p1 <- DESeq2::plotPCA(ddsNorm, intgroup = "treatment", ntop=500) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Paired") +
+  ggtitle("PC1 PC2 by treatment")
+p2 <- DESeq2::plotPCA(ddsNorm, intgroup = "treatment", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Paired") +
+  ggtitle("PC3 PC4 by treatment")
+p3 <- DESeq2::plotPCA(ddsNorm, intgroup = "replicate", ntop=500) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Paired") +
+  ggtitle("PC1 PC2 by mouse")
+p4 <- DESeq2::plotPCA(ddsNorm, intgroup = "replicate", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Paired") +
+  ggtitle("PC3 PC4 by mouse")
+
+(p1+p2)/(p3+p4)
+```
+```{r, fig.height=10, fig.width=12}
+p1 <- DESeq2::plotPCA(ddsNorm[,-grep("^p123_1e",colnames(ddsNorm))], intgroup = "treatment", ntop=500) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Paired") +
+  ggtitle("PC1 PC2 by treatment")
+p2 <- DESeq2::plotPCA(ddsNorm[,-grep("^p123_1e",colnames(ddsNorm))], intgroup = "treatment", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Paired") +
+  ggtitle("PC3 PC4 by treatment")
+p3 <- DESeq2::plotPCA(ddsNorm[,-grep("^p123_1e",colnames(ddsNorm))], intgroup = "replicate", ntop=500) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Paired") +
+  ggtitle("PC1 PC2 by mouse")
+p4 <- DESeq2::plotPCA(ddsNorm[,-grep("^p123_1e",colnames(ddsNorm))], intgroup = "replicate", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Paired") +
+  ggtitle("PC3 PC4 by mouse")
+
+(p1+p2)/(p3+p4)
+```
+
+#### Variable Genes
+
+```{r, fig.height=11, fig.width=9}
+library(RColorBrewer)
+
+# find top variable genes
+topVarGenes <- head(order(rowVars(assay(ddsNorm)), decreasing = TRUE), 80)
+
+# extract VST count matrix
+mat  <- assay(ddsNorm)[topVarGenes, ]
+# z-score VST counts
+mat  <- t(scale(t(mat), center = T, scale = F))
+anno <- as.data.frame(colData(ddsNorm)[, c("treatment","replicate")])
+
+# replace rownames with gene names
+rownames <- tibble(ensembl_ID = rownames(mat)) %>%
+  left_join(featureNames)
+rownames(mat) <- rownames$gene
+
+pheatmap(mat, annotation_col = anno,
+          annotation_colors = list(treatment = setNames(brewer.pal(10, "Paired"),levels(anno$treatment)),
+                                   replicate = setNames(brewer.pal(3,"Dark2"),unique(anno$replicate))),
+         main = "Centered VST normalized counts")
+```
+
+There is biological variability between different mice. For example, Il2 is consistently not upregulated in one mouse across all treatments.
+
+```{r, fig.height=12, fig.width=8}
+# extract VST count matrix
+mat  <- assay(ddsNorm)[topVarGenes, ]
+# z-score VST counts
+mat  <- t(scale(t(mat), center = T, scale = F))
+anno <- as.data.frame(colData(ddsNorm)[, c("treatment","replicate")])
+# remove p123 titration samples
+mat <- mat[,grep("^p123_1e",colnames(mat),invert = T)]
+anno <- anno[grep("^p123_1e",rownames(anno),invert = T),]
+
+# replace rownames with gene names
+rownames <- tibble(ensembl_ID = rownames(mat)) %>%
+  left_join(featureNames)
+rownames(mat) <- rownames$gene
+
+pheatmap(mat, annotation_col = anno,
+          annotation_colors = list(treatment = setNames(brewer.pal(10, "Paired"),levels(anno$treatment)),
+                                   replicate = setNames(brewer.pal(3,"Dark2"),unique(anno$replicate))),
+         main = "Centered VST normalized counts")
+```
+
+```{r, fig.height=8, fig.width=6}
+# find top variable genes
+topVarGenes <- head(order(rowVars(assay(ddsNorm)), decreasing = TRUE), 30)
+
+# extract VST count matrix
+mat  <- assay(ddsNorm)[topVarGenes, ]
+# z-score VST counts
+mat  <- t(scale(t(mat), center = T, scale = F))
+anno <- as.data.frame(colData(ddsNorm)[, c("treatment","replicate")])
+# remove p123 titration samples
+mat <- mat[,grep("^p123_1e",colnames(mat),invert = T)]
+anno <- anno[grep("^p123_1e",rownames(anno),invert = T),]
+
+# replace rownames with gene names
+rownames <- tibble(ensembl_ID = rownames(mat)) %>%
+  left_join(featureNames)
+rownames(mat) <- rownames$gene
+
+pheatmap(mat, annotation_col = anno,
+          annotation_colors = list(treatment = setNames(brewer.pal(10, "Paired"),levels(anno$treatment)),
+                                   replicate = setNames(brewer.pal(3,"Dark2"),unique(anno$replicate))),
+         main = "Centered VST normalized counts")
+```
+
+#### Calculate and plot DEGs
+
+```{r}
+# perform DE analysis
+dds <- DESeq(dds)
+
+# plot dispersion model to examine best fit
+plotDispEsts(dds)
+```
+
+```{r}
+# get DEG results
+# don't use independent filtering because already filtered genes
+
+resLFCIl4virus <- results(dds, contrast = c("treatment","IL4_20x","p123_20x"), independentFiltering=F)
+resLFCIl4virus <- lfcShrink(dds, type = "ashr", res=resLFCIl4virus) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames) %>%
+  mutate(treatment = "virus") %>%
+  arrange(padj)
+
+resLFCIl4recomb <- results(dds, contrast = c("treatment","IL4_recomb","untreated"), independentFiltering=F)
+resLFCIl4recomb <- lfcShrink(dds, type = "ashr", res=resLFCIl4recomb) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames) %>%
+  mutate(treatment = "recombinant") %>%
+  arrange(padj)
+
+resLFCIl6virus <- results(dds, contrast = c("treatment","IL6_20x","p123_20x"), independentFiltering=F)
+resLFCIl6virus <- lfcShrink(dds, type = "ashr", res=resLFCIl6virus) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames) %>%
+  mutate(treatment = "virus") %>%
+  arrange(padj)
+
+resLFCIl6recomb <- results(dds, contrast = c("treatment","IL6_recomb","untreated"), independentFiltering=F)
+resLFCIl6recomb <- lfcShrink(dds, type = "ashr", res=resLFCIl6recomb) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames) %>%
+  mutate(treatment = "recombinant") %>%
+  arrange(padj)
+
+resLFCIl12virus <- results(dds, contrast = c("treatment","IL12_20x","p123_20x"), independentFiltering=F)
+resLFCIl12virus <- lfcShrink(dds, type = "ashr", res=resLFCIl12virus) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames) %>%
+  mutate(treatment = "virus") %>%
+  arrange(padj)
+
+resLFCIl12recomb <- results(dds, contrast = c("treatment","IL12_recomb","untreated"), independentFiltering=F)
+resLFCIl12recomb <- lfcShrink(dds, type = "ashr", res = resLFCIl12recomb) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames) %>%
+  mutate(treatment = "recombinant") %>%
+  arrange(padj)
+
+resLFCvirus <- results(dds, contrast = c("treatment","p123_1e11","untreated"), independentFiltering=F)
+resLFCvirus <- lfcShrink(dds, type = "ashr", res=resLFCvirus) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames) %>%
+  arrange(padj)
+
+resLFCvirus2 <- results(dds, contrast = c("treatment","p123_1e11","p123_1e10"), independentFiltering=F)
+resLFCvirus2 <- lfcShrink(dds, type = "ashr", res=resLFCvirus2) %>%
+  as_tibble(rownames = "ensembl_ID") %>%
+  left_join(featureNames) %>%
+  arrange(padj)
+```
+
+
+```{r, fig.height=12, fig.width=16}
+# Merge the reference tibble with the comparison data
+comparisonTibIl4 <- resLFCIl4virus %>%
+  left_join(resLFCIl4recomb, by = "ensembl_ID", suffix = c("", "_ref")) %>%
+  mutate(
+    significance = case_when(
+      padj_ref < 0.1 & padj < 0.1 ~ "both",
+      padj_ref < 0.1 ~ "recombinant specific",
+      padj < 0.1 ~ "virus specific",
+      TRUE ~ "none"
+    )) %>%
+  mutate(significance = factor(significance, c("none","recombinant specific","virus specific","both"))
+  ) %>%
+  filter(significance != "none")
+
+# Plotting
+p1 <- ggplot(comparisonTibIl4, aes(x = log2FoldChange_ref, y = log2FoldChange, color = significance)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  xlim(-5,7)+
+  ylim(-5,7)+
+  labs(
+    title = "IL4",
+    x = "log2FC (recombinant)",
+    y = "log2FC (virus)"
+  )
+
+# Merge the reference tibble with the comparison data
+comparisonTibIl6 <- resLFCIl6virus %>%
+  left_join(resLFCIl6recomb, by = "ensembl_ID", suffix = c("", "_ref")) %>%
+  mutate(
+    significance = case_when(
+      padj_ref < 0.1 & padj < 0.1 ~ "both",
+      padj_ref < 0.1 ~ "recombinant specific",
+      padj < 0.1 ~ "virus specific",
+      TRUE ~ "none"
+    )) %>%
+  mutate(significance = factor(significance, c("none","recombinant specific","virus specific","both"))
+  ) %>%
+  filter(significance != "none")
+
+# Plotting
+p2 <- ggplot(comparisonTibIl6, aes(x = log2FoldChange_ref, y = log2FoldChange, color = significance)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  xlim(-7,8)+
+  ylim(-7,8)+
+  labs(
+    title = "IL6",
+    x = "log2FC (recombinant)",
+    y = "log2FC (virus)"
+  )
+  
+
+# Merge the reference tibble with the comparison data
+comparisonTibIl12 <- resLFCIl12virus %>%
+  left_join(resLFCIl12recomb, by = "ensembl_ID", suffix = c("", "_ref")) %>%
+  mutate(
+    significance = case_when(
+      padj_ref < 0.1 & padj < 0.1 ~ "both",
+      padj_ref < 0.1 ~ "recombinant specific",
+      padj < 0.1 ~ "virus specific",
+      TRUE ~ "none"
+    )) %>%
+  mutate(significance = factor(significance, c("none","recombinant specific","virus specific","both"))
+  ) %>%
+  filter(significance != "none")
+
+# Plotting
+p3 <- ggplot(comparisonTibIl12, aes(x = log2FoldChange_ref, y = log2FoldChange, color = significance)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  xlim(-2.5,5)+
+  ylim(-2.5,5)+
+  labs(
+    title = "IL12",
+    x = "log2FC (recombinant)",
+    y = "log2FC (virus)"
+  )
+
+plot_grid(p1,p2,p3,ncol = 2)
+```
+
+```{r, fig.height=6, fig.width=6}
+library(ggrepel)
+
+resLFCvirus %>%
+  filter(padj < 0.1) %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj))) +
+    geom_point() +
+    geom_text_repel(aes(label = gene),show.legend = FALSE) +
+    ggtitle("2e11 LP/mL vs untreated padj < 0.1") +
+    guides(colour = guide_legend(override.aes = list(size=1))) +
+    theme(aspect.ratio = 1)
+
+nrow(resLFCvirus2 %>% filter(padj < 0.1))
+```
+
+There are no significant DEGs in 2e11 vs 2e10 comparison
+
+```{r, fig.height=18, fig.width=12}
+Il4shared <- filter(comparisonTibIl4, significance == "both")$gene
+Il6shared <- filter(comparisonTibIl6, significance == "both")$gene
+Il12shared <- filter(comparisonTibIl12, significance == "both")$gene
+
+p1 <- resLFCIl4virus %>%
+  filter(padj < 0.1) %>%
+  mutate(shared = ifelse(gene %in% Il4shared, "yes","no")) %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
+    geom_point() +
+    scale_color_brewer(palette = "Dark2") +
+    ggtitle("IL4 virus padj < 0.1") +
+    theme(aspect.ratio = 1)
+p2 <- resLFCIl4recomb %>%
+  filter(padj < 0.1) %>%
+  mutate(shared = ifelse(gene %in% Il4shared, "yes","no")) %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
+    geom_point() +
+    scale_color_brewer(palette = "Dark2") +
+    ggtitle("IL4 recombinant padj < 0.1") +
+    theme(aspect.ratio = 1)
+
+p3 <- resLFCIl6virus %>%
+  filter(padj < 0.1) %>%
+  mutate(shared = ifelse(gene %in% Il6shared, "yes","no")) %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
+    geom_point() +
+    scale_color_brewer(palette = "Dark2") +
+    ggtitle("IL6 virus padj < 0.1") +
+    theme(aspect.ratio = 1)
+p4 <- resLFCIl6recomb %>%
+  filter(padj < 0.1) %>%
+  mutate(shared = ifelse(gene %in% Il6shared, "yes","no")) %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
+    geom_point() +
+    scale_color_brewer(palette = "Dark2") +
+    ggtitle("IL6 recombinant padj < 0.1") +
+    theme(aspect.ratio = 1)
+
+p5 <- resLFCIl12virus %>%
+  filter(padj < 0.1) %>%
+  mutate(shared = ifelse(gene %in% Il12shared, "yes","no")) %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
+    geom_point() +
+    scale_color_brewer(palette = "Dark2") +
+    ggtitle("IL12 virus padj < 0.1") +
+    theme(aspect.ratio = 1)
+p6 <- resLFCIl12recomb %>%
+  filter(padj < 0.1) %>%
+  mutate(shared = ifelse(gene %in% Il12shared, "yes","no")) %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
+    geom_point() +
+    scale_color_brewer(palette = "Dark2") +
+    ggtitle("IL12 recombinant padj < 0.1") +
+    theme(aspect.ratio = 1)
+
+plot_grid(p1,p2,p3,p4,p5,p6,ncol = 2)
+```
+
+
+```{r}
+write_csv(comparisonTibIl4, "analysis_outs/deg_IL4.csv")
+write_csv(comparisonTibIl6, "analysis_outs/deg_IL6.csv")
+write_csv(comparisonTibIl12, "analysis_outs/deg_IL12.csv")
+write_csv(resLFCvirus, "analysis_outs/deg_p123-1e11_untreated.csv")
+write_csv(resLFCvirus2, "analysis_outs/deg_p123-1e11_1e10.csv")
+```
+
+
+INSERT UPSET PLOTS
+
+
+
+
+
+
+
+
+
+
+
+
+
+

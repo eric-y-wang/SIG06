@@ -1,0 +1,107 @@
+---
+title: "p123 RNAseq Processing"
+author: "Eric Y. Wang"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+    html_preview: false
+  html_notebook:
+    toc: true
+    toc_float: true
+---
+
+```{r setup}
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+library(DESeq2)
+library(Matrix)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+source("functions/plotting_fxns.R")
+theme_set(theme_Publication())
+```
+
+### [Import Data]{.underline}
+
+Create counts matrix using *UMI collapsed data*
+```{r}
+matrix_dir <- "C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/"
+
+# import UMI count matrix
+mat <- readMM("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/umiDedup-1MM_Directional.mtx") %>%
+  as.matrix() %>%
+  as.data.frame()
+
+# import feature names
+featureNames <- read_tsv("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/features.tsv", col_names = F)
+colnames(featureNames) <- c("ensembl_ID","gene","category")
+
+# import barcode names
+barcodeNames <- read_tsv("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/barcodes.tsv", col_names = F)
+colnames(barcodeNames) <- "barcode"
+
+colnames(mat) <- barcodeNames$barcode
+rownames(mat) <- featureNames$ensembl_ID
+```
+
+Create metadata assignments
+```{r}
+# import barcode sample assignments
+metadata <- read_csv("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/sample_metadata.csv")
+# merge barcode sample assignments with barcode names
+metadata <- left_join(barcodeNames,metadata) %>%
+  mutate(sample_ID = paste0(treatment,"_",well)) %>%
+  drop_na()
+
+mat <- mat[,metadata$barcode]
+colnames(mat) <- metadata$sample_ID
+```
+
+### [Sample Level QC]{.underline}
+
+```{r}
+sampleQC <- tibble(sample_ID = colnames(mat),
+                   nFeature_RNA = colSums(mat > 0),
+                   nCount_RNA = colSums(mat)) %>%
+  left_join(metadata)
+```
+
+```{r, fig.height=10, fig.width=15}
+p1 <- ggplot(sampleQC, aes(x = sample_ID, y = nFeature_RNA)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+p2 <- ggplot(sampleQC, aes(x = sample_ID, y = nCount_RNA)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+p3 <- ggplot(sampleQC, aes(x = nFeature_RNA, y = nCount_RNA)) +
+  geom_point()
+
+plot_grid(p1,p2,p3, ncol = 2)
+```
+
+### [Process and export matrix]{.underline}
+
+```{r}
+paste0(sum(rowSums(mat > 0) > 0)," genes have counts > 0 in at least one sample")
+paste0(sum(rowSums(mat > 0) == 33)," genes have counts > 0 in at all samples")
+
+# remove genes that are not expressed in any sample
+mat <- mat[rowSums(mat > 0) > 0,]
+
+write.csv(mat, "C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/processed_data/RNAseq_p123_counts.csv", row.names = T)
+write_csv(sampleQC, "C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/processed_data/processed_metadata.csv")
+```
+
+
+
+
+
+
+
