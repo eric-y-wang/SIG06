@@ -1,5 +1,5 @@
 ---
-title: "p123 RNAseq DEseq Analysis"
+title: "SIG06 DEseq Analysis"
 author: "Eric Y. Wang"
 date: "`r Sys.Date()`"
 output:
@@ -18,48 +18,36 @@ library(cowplot)
 library(patchwork)
 library(DESeq2)
 library(ComplexHeatmap)
+library(IHW)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-source("functions/plotting_fxns.R")
+source("../functions/plotting_fxns.R")
 theme_set(theme_Publication())
 ```
 
 ### [Import Data]{.underline}
 
 ```{r}
-data <- read.csv("C:/Users/Eric/Documents/datasets/EYW/RNAseq_p123_240806/processed_data/RNAseq_p123_counts.csv", row.names = "X")
+data <- read.csv("../processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = "X")
 
-metadata <- read_csv("C:/Users/Eric/Documents/datasets/EYW/RNAseq_p123_240806/processed_data/processed_metadata.csv")
+metadata <- read_csv("../processing_outs/processed_metadata_SIG06.csv")
 
 # import feature names
-featureNames <- read_tsv("C:/Users/Eric/Documents/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/features.tsv", col_names = F)
-colnames(featureNames) <- c("ensembl_ID","gene","category")
+featureNames <- read_csv("../processing_outs/featureNames_SIG06.csv")
 featureNames <- select(featureNames, -category)
 ```
-
-```{r}
-# remove some untreated samples to balance out groups
-metadata <- metadata %>%
-  filter(!(well %in% c("H09","H10","H12")))
-data <- data[,metadata$sample_ID]
-```
-
 
 ### [DE Analysis]{.underline}
 
 ```{r}
-metadata <- metadata %>%
-  mutate(treatment = factor(treatment, c("IL4_recomb","IL4_20x",
-                                            "IL6_recomb","IL6_20x",
-                                            "IL12_recomb","IL12_20x",
-                                            "untreated","p123_20x",
-                                            "p123_1e11","p123_1e10")))
-
 # prepare metadata for DESeq
 metaDF <- as.data.frame(metadata[,-1])
 rownames(metaDF) <- metadata$sample_ID
+
+# match matrix and metadata
+data <- data[,rownames(metaDF)]
 ```
 
 ```{r}
@@ -69,9 +57,9 @@ dds <- DESeqDataSetFromMatrix(data,
                               design = ~ treatment + replicate)
 
 # prefilter dds
-# remove any gene with fewer than 10 counts in the smallest group size
+# remove any gene with fewer than 2 counts in the smallest group size
 smallestGroupSize <- 3
-keep <- rowSums(counts(dds) >= 10) >= smallestGroupSize
+keep <- rowSums(counts(dds) >= 2) >= smallestGroupSize
 dds <- dds[keep,]
 ```
 
@@ -86,10 +74,8 @@ normCounts <- counts(dds, normalized=T) %>%
   as_tibble(rownames = "ensembl_ID") %>%
   left_join(featureNames)
 
-# write_csv(normCounts, "analysis_outs/counts_norm_DEseq2.csv")
+write_csv(normCounts, "../analysis_outs/counts_norm_DEseq2.csv")
 ```
-
-
 
 #### Assess sample similarity
 
@@ -101,38 +87,62 @@ First, we'll perform PCA analysis to look at the overall similarity between samp
 ddsNorm <- vst(dds)
 ```
 
-```{r, fig.height=10, fig.width=12}
-p1 <- DESeq2::plotPCA(ddsNorm, intgroup = "treatment", ntop=500) + theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired") +
-  ggtitle("PC1 PC2 by treatment")
-p2 <- DESeq2::plotPCA(ddsNorm, intgroup = "treatment", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired") +
-  ggtitle("PC3 PC4 by treatment")
-p3 <- DESeq2::plotPCA(ddsNorm, intgroup = "replicate", ntop=500) + theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired") +
-  ggtitle("PC1 PC2 by mouse")
-p4 <- DESeq2::plotPCA(ddsNorm, intgroup = "replicate", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired") +
-  ggtitle("PC3 PC4 by mouse")
+```{r, fig.height=15, fig.width=18}
+p1 <- DESeq2::plotPCA(ddsNorm, intgroup = "plate", ntop=500) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("PC1 PC2 by plate")
+p2 <- DESeq2::plotPCA(ddsNorm, intgroup = "plate", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("PC3 PC4 by plate")
+p3 <- DESeq2::plotPCA(ddsNorm, intgroup = "plate", ntop=500, pcsToUse = 5:6) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("PC5 PC6 by plate")
+p4 <- DESeq2::plotPCA(ddsNorm, intgroup = "plate", ntop=500, pcsToUse = 7:8) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("PC7 PC8 by plate")
 
 (p1+p2)/(p3+p4)
 ```
-```{r, fig.height=10, fig.width=12}
-p1 <- DESeq2::plotPCA(ddsNorm[,-grep("^p123_1e",colnames(ddsNorm))], intgroup = "treatment", ntop=500) + theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired") +
-  ggtitle("PC1 PC2 by treatment")
-p2 <- DESeq2::plotPCA(ddsNorm[,-grep("^p123_1e",colnames(ddsNorm))], intgroup = "treatment", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired") +
-  ggtitle("PC3 PC4 by treatment")
-p3 <- DESeq2::plotPCA(ddsNorm[,-grep("^p123_1e",colnames(ddsNorm))], intgroup = "replicate", ntop=500) + theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired") +
-  ggtitle("PC1 PC2 by mouse")
-p4 <- DESeq2::plotPCA(ddsNorm[,-grep("^p123_1e",colnames(ddsNorm))], intgroup = "replicate", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired") +
-  ggtitle("PC3 PC4 by mouse")
+
+```{r, fig.height=15, fig.width=18}
+p1 <- DESeq2::plotPCA(ddsNorm, intgroup = "replicate", ntop=500) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("PC1 PC2 by replicate")
+p2 <- DESeq2::plotPCA(ddsNorm, intgroup = "replicate", ntop=500, pcsToUse = 3:4) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("PC3 PC4 by replicate")
+p3 <- DESeq2::plotPCA(ddsNorm, intgroup = "replicate", ntop=500, pcsToUse = 5:6) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("PC5 PC6 by replicate")
+p4 <- DESeq2::plotPCA(ddsNorm, intgroup = "replicate", ntop=500, pcsToUse = 7:8) + theme(aspect.ratio = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("PC7 PC8 by replicate")
 
 (p1+p2)/(p3+p4)
 ```
+
+```{r, fig.height=15, fig.width=18}
+p1 <- DESeq2::plotPCA(ddsNorm, intgroup = "nCount_RNA", ntop=500) +
+  theme(aspect.ratio = 1) +
+  scale_color_viridis_c() +
+  ggtitle("PC1 PC2 by nCount_RNA")
+p2 <- DESeq2::plotPCA(ddsNorm, intgroup = "nCount_RNA", ntop=500, pcsToUse = 3:4) +
+  theme(aspect.ratio = 1) +
+  scale_color_viridis_c() +
+  ggtitle("PC3 PC4 by nCount_RNA")
+p3 <- DESeq2::plotPCA(ddsNorm, intgroup = "nCount_RNA", ntop=500, pcsToUse = 5:6) +
+  theme(aspect.ratio = 1) +
+  scale_color_viridis_c() +
+  ggtitle("PC5 PC6 by nCount_RNA")
+p4 <- DESeq2::plotPCA(ddsNorm, intgroup = "nCount_RNA", ntop=500, pcsToUse = 7:8) +
+  theme(aspect.ratio = 1) +
+  scale_color_viridis_c() +
+  ggtitle("PC7 PC8 by nCount_RNA")
+
+(p1+p2)/(p3+p4)
+```
+
+There don't appear to be any major outliers by plate, sequencing depth, or biological group.
 
 #### Variable Genes
 
@@ -220,7 +230,7 @@ plotDispEsts(dds)
 # get DEG results
 # don't use independent filtering because already filtered genes
 
-resLFCIl4virus <- results(dds, contrast = c("treatment","IL4_20x","p123_20x"), independentFiltering=F)
+resLFCIl4virus <- results(dds, contrast = c("treatment","IL4_20x","p123_20x"), independentFiltering=F, filterFun=ihw)
 resLFCIl4virus <- lfcShrink(dds, type = "ashr", res=resLFCIl4virus) %>%
   as_tibble(rownames = "ensembl_ID") %>%
   left_join(featureNames) %>%

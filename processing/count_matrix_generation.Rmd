@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-source("functions/plotting_fxns.R")
+source("../functions/plotting_fxns.R")
 theme_set(theme_Publication())
 ```
 
@@ -30,7 +30,7 @@ theme_set(theme_Publication())
 
 Create counts matrix using *UMI collapsed data*
 ```{r}
-matrix_dir <- "C:/Users/Eric/My Drive/Lab/datasets/EYW/SIG06/star_output/"
+matrix_dir <- "../star_output/"
 
 load_matrix <- function(sample){
   # import UMI count matrix
@@ -39,7 +39,7 @@ load_matrix <- function(sample){
     as.data.frame()
   
   # import barcode names
-  barcodeNames <- read_tsv("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/barcodes.tsv", col_names = F)
+  barcodeNames <- read_tsv(paste0(matrix_dir,sample,"Solo.out/Gene/raw/barcodes.tsv"), col_names = F)
   colnames(barcodeNames) <- "barcode"
   
   # import feature names
@@ -53,7 +53,7 @@ load_matrix <- function(sample){
 }
 
 # import feature names
-featureNames <- read_tsv(paste0(matrix_dir,sample,"Solo.out/Gene/raw/features.tsv"), col_names = F)
+featureNames <- read_tsv(paste0(matrix_dir,"SIG06_1_Solo.out/Gene/raw/features.tsv"), col_names = F)
 colnames(featureNames) <- c("ensembl_ID","gene","category")
 ```
 
@@ -64,56 +64,122 @@ mat_SIG06_3 <- load_matrix("SIG06_3_")
 mat_SIG06_4 <- load_matrix("SIG06_4_")
 ```
 
-
 Create metadata assignments
 ```{r}
-# import barcode sample assignments
-metadata <- read_csv("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/sample_metadata.csv")
-# merge barcode sample assignments with barcode names
-metadata <- left_join(barcodeNames,metadata) %>%
-  mutate(sample_ID = paste0(treatment,"_",well)) %>%
-  drop_na()
+meta1 <- read_csv("../metadata/lib1_metadata.csv")
+meta2 <- read_csv("../metadata/lib2_metadata.csv")
+meta3 <- read_csv("../metadata/lib3_metadata.csv")
+meta4 <- read_csv("../metadata/lib4_metadata.csv")
 
-mat <- mat[,metadata$barcode]
-colnames(mat) <- metadata$sample_ID
+assign_meta <- function(meta, matrix){
+  # merge barcode sample assignments with barcode names
+  metadata <- left_join(tibble(barcode = colnames(matrix)), meta) %>%
+    mutate(sample_ID = paste0(treatment,"_",replicate,"_",plate,"_",well)) %>%
+    drop_na()
+  
+  # filter for assigned barcodes and rename
+  matrix <- matrix[,metadata$barcode]
+  colnames(matrix) <- metadata$sample_ID
+  
+  return(matrix)
+}
+```
+
+```{r}
+mat1_assigned <- assign_meta(meta1, mat_SIG06_1)
+mat2_assigned <- assign_meta(meta2, mat_SIG06_2)
+mat3_assigned <- assign_meta(meta3, mat_SIG06_3)
+mat4_assigned <- assign_meta(meta4, mat_SIG06_4)
+```
+
+Check dimensions of matrices
+```{r}
+dim(mat1_assigned)
+dim(mat2_assigned)
+dim(mat3_assigned)
+dim(mat4_assigned)
+```
+
+create combined matrix
+```{r}
+mat <- cbind(mat1_assigned,
+             mat2_assigned,
+             mat3_assigned,
+             mat4_assigned)
 ```
 
 ### [Sample Level QC]{.underline}
 
 ```{r}
 sampleQC <- tibble(sample_ID = colnames(mat),
+                   sample_ID2 = colnames(mat),
                    nFeature_RNA = colSums(mat > 0),
                    nCount_RNA = colSums(mat)) %>%
-  left_join(metadata)
+  separate(sample_ID2, into = c("treatment", "replicate", "plate","well"), sep = "_")
 ```
 
-```{r, fig.height=10, fig.width=15}
-p1 <- ggplot(sampleQC, aes(x = sample_ID, y = nFeature_RNA)) +
-  geom_bar(stat = "identity") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```{r, fig.height=10, fig.width=8}
+p1 <- ggplot(sampleQC, aes(x = plate, y = nFeature_RNA, fill = plate)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Dark2")
 
-p2 <- ggplot(sampleQC, aes(x = sample_ID, y = nCount_RNA)) +
-  geom_bar(stat = "identity") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+p2 <- ggplot(sampleQC, aes(x = plate, y = nCount_RNA, fill = plate)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Dark2")
 
-p3 <- ggplot(sampleQC, aes(x = nFeature_RNA, y = nCount_RNA)) +
-  geom_point()
+p1/p2
+```
 
-plot_grid(p1,p2,p3, ncol = 2)
+```{r, fig.height=10, fig.width=25}
+p1 <- ggplot(sampleQC, aes(x = treatment, y = nFeature_RNA, color = plate)) +
+  geom_point() +
+  scale_color_brewer(palette = "Dark2") +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
+
+
+p2 <- ggplot(sampleQC, aes(x = treatment, y = nCount_RNA, color = plate)) +
+  geom_point() +
+  scale_color_brewer(palette = "Dark2") +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
+
+p1/p2
+```
+
+```{r, fig.height=10, fig.width=25}
+p1 <- ggplot(sampleQC, aes(x = treatment, y = nFeature_RNA)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
+
+
+p2 <- ggplot(sampleQC, aes(x = treatment, y = nCount_RNA)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
+
+p1/p2
+```
+
+```{r, fig.height=10, fig.width=10}
+ggplot(sampleQC, aes(x = nFeature_RNA, y = nCount_RNA)) +
+  geom_point() +
+  facet_wrap(~plate)
 ```
 
 ### [Process and export matrix]{.underline}
 
 ```{r}
 paste0(sum(rowSums(mat > 0) > 0)," genes have counts > 0 in at least one sample")
-paste0(sum(rowSums(mat > 0) == 33)," genes have counts > 0 in at all samples")
+paste0(sum(rowSums(mat > 0) == ncol(mat))," genes have counts > 0 in all samples")
+```
 
+```{r}
 # remove genes that are not expressed in any sample
 mat <- mat[rowSums(mat > 0) > 0,]
 
-write.csv(mat, "C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/processed_data/RNAseq_p123_counts.csv", row.names = T)
-write_csv(sampleQC, "C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/processed_data/processed_metadata.csv")
+write.csv(mat, "../processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = T)
+write_csv(sampleQC,"../processing_outs/processed_metadata_SIG06.csv")
+write_csv(featureNames,"../processing_outs/featureNames_SIG06.csv")
 ```
+
 
 
 
