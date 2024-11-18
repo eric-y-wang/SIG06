@@ -1,5 +1,5 @@
 ---
-title: "p123 RNAseq Processing"
+title: "SIG06 RNAseq Processing"
 author: "Eric Y. Wang"
 date: "`r Sys.Date()`"
 output:
@@ -30,24 +30,40 @@ theme_set(theme_Publication())
 
 Create counts matrix using *UMI collapsed data*
 ```{r}
-matrix_dir <- "C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/"
+matrix_dir <- "C:/Users/Eric/My Drive/Lab/datasets/EYW/SIG06/star_output/"
 
-# import UMI count matrix
-mat <- readMM("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/umiDedup-1MM_Directional.mtx") %>%
-  as.matrix() %>%
-  as.data.frame()
+load_matrix <- function(sample){
+  # import UMI count matrix
+  mat <- readMM(paste0(matrix_dir,sample,"Solo.out/Gene/raw/umiDedup-1MM_Directional.mtx")) %>%
+    as.matrix() %>%
+    as.data.frame()
+  
+  # import barcode names
+  barcodeNames <- read_tsv("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/barcodes.tsv", col_names = F)
+  colnames(barcodeNames) <- "barcode"
+  
+  # import feature names
+  featureNames <- read_tsv(paste0(matrix_dir,sample,"Solo.out/Gene/raw/features.tsv"), col_names = F)
+  colnames(featureNames) <- c("ensembl_ID","gene","category")
+  
+  colnames(mat) <- barcodeNames$barcode
+  rownames(mat) <- featureNames$ensembl_ID
+  
+  return(mat)
+}
 
 # import feature names
-featureNames <- read_tsv("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/features.tsv", col_names = F)
+featureNames <- read_tsv(paste0(matrix_dir,sample,"Solo.out/Gene/raw/features.tsv"), col_names = F)
 colnames(featureNames) <- c("ensembl_ID","gene","category")
-
-# import barcode names
-barcodeNames <- read_tsv("C:/Users/Eric/My Drive/Lab/datasets/EYW/RNAseq_p123_240806/star_outputSolo.out/Gene/raw/barcodes.tsv", col_names = F)
-colnames(barcodeNames) <- "barcode"
-
-colnames(mat) <- barcodeNames$barcode
-rownames(mat) <- featureNames$ensembl_ID
 ```
+
+```{r}
+mat_SIG06_1 <- load_matrix("SIG06_1_")
+mat_SIG06_2 <- load_matrix("SIG06_2_")
+mat_SIG06_3 <- load_matrix("SIG06_3_")
+mat_SIG06_4 <- load_matrix("SIG06_4_")
+```
+
 
 Create metadata assignments
 ```{r}
