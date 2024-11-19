@@ -30,16 +30,16 @@ theme_set(theme_Publication())
 ### [Import Data]{.underline}
 
 ```{r}
-data <- read.csv("../processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = "X")
+data <- read.csv("processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = "X")
 
-metadata <- read_csv("../processing_outs/processed_metadata_SIG06.csv")
+metadata <- read_csv("processing_outs/processed_metadata_SIG06.csv")
 
 # import feature names
-featureNames <- read_csv("../processing_outs/featureNames_SIG06.csv")
+featureNames <- read_csv("processing_outs/featureNames_SIG06.csv")
 featureNames <- select(featureNames, -category)
 ```
 
-### [DE Analysis]{.underline}
+### [Normalization and Diagnostic Plots]{.underline}
 
 ```{r}
 # prepare metadata for DESeq
@@ -57,7 +57,7 @@ dds <- DESeqDataSetFromMatrix(data,
                               design = ~ treatment + replicate)
 
 # prefilter dds
-# remove any gene with fewer than 2 counts in the smallest group size
+# remove any gene with fewer than 5 counts in the smallest group size
 smallestGroupSize <- 3
 keep <- rowSums(counts(dds) >= 2) >= smallestGroupSize
 dds <- dds[keep,]
@@ -74,7 +74,7 @@ normCounts <- counts(dds, normalized=T) %>%
   as_tibble(rownames = "ensembl_ID") %>%
   left_join(featureNames)
 
-write_csv(normCounts, "../analysis_outs/counts_norm_DEseq2.csv")
+write_csv(normCounts, "analysis_outs/counts_norm_DEseq2.csv")
 ```
 
 #### Assess sample similarity
@@ -142,7 +142,90 @@ p4 <- DESeq2::plotPCA(ddsNorm, intgroup = "nCount_RNA", ntop=500, pcsToUse = 7:8
 (p1+p2)/(p3+p4)
 ```
 
-There don't appear to be any major outliers by plate, sequencing depth, or biological group.
+There don't appear to be any major outliers by plate, sequencing depth, or biological group. Plate 4 is a bit of an outlier since it has samples that aren't on plate 1/2/3 so I would expect it be a bit different than the others.
+
+### [DEG Analysis]{.underline}
+
+#### Create DESeq object
+
+```{r}
+# # perform DE analysis
+# dds <- DESeq(dds, parallel = TRUE)
+```
+
+```{r}
+# # save dds object
+# saveRDS(dds, "analysis_outs/dds_object_SIG07.rds")
+
+# import dds object
+dds <- readRDS("analysis_outs/dds_object_SIG07.rds")
+```
+
+
+```{r}
+# plot dispersion model to examine best fit
+plotDispEsts(dds)
+```
+
+#### Calculate DEGs
+
+Made a quick helper function to calculate DEGs.
+```{r}
+library(IHW)
+
+# import feature names (used in function below)
+featureNames <- read_csv("processing_outs/featureNames_SIG06.csv")
+featureNames <- select(featureNames, -category)
+
+# sample input can be single character or vector of characters
+# control input must be single character, defaults to linker
+iterative_DEG <- function(samples, control = "linker"){
+  # empty tibble for full DEG list
+  resAll <- tibble()
+  
+  for(ligand in samples){
+    # perform IHW DEG analysis
+    # don't perform independent filtering because using IHW
+    res <- results(dds, contrast = c("treatment",ligand,control),
+                 independentFiltering=F,
+                 filterFun = ihw,
+                 parallel = T)
+    
+    # perform LFC shrinkage and make tidy
+    # pass res to lfcShrink
+    resTidy <- lfcShrink(dds, type = "ashr", res=res) %>%
+      as_tibble(rownames = "ensembl_ID") %>%
+      left_join(featureNames) %>%
+      mutate(treatment = ligand) %>%
+      arrange(padj)
+    
+    # add to full DEG list
+    resAll <- bind_rows(resAll, resTidy)
+    
+    return(resAll)
+  }
+}
+```
+
+```{r}
+# select viral treatments groups
+viralGroups <- dds$treatment %>% unique()
+viralGroups <- viralGroups[grep("recomb|none|linker", viralGroups, invert = T)]
+viralGroups
+```
+
+```{r}
+res <- iterative_DEG("GDF7")
+res2 <- iterative_DEG("IFNA")
+res3 <- iterative_DEG("IL12")
+res4 <- iterative_DEG("IL12recomb","none")
+res5 <- iterative_DEG("IL6","linker")
+res6 <- iterative_DEG("linker","none")
+```
+
+
+
+
 
 #### Variable Genes
 
@@ -216,252 +299,6 @@ pheatmap(mat, annotation_col = anno,
          main = "Centered VST normalized counts")
 ```
 
-#### Calculate and plot DEGs
-
-```{r}
-# perform DE analysis
-dds <- DESeq(dds)
-
-# plot dispersion model to examine best fit
-plotDispEsts(dds)
-```
-
-```{r}
-# get DEG results
-# don't use independent filtering because already filtered genes
-
-resLFCIl4virus <- results(dds, contrast = c("treatment","IL4_20x","p123_20x"), independentFiltering=F, filterFun=ihw)
-resLFCIl4virus <- lfcShrink(dds, type = "ashr", res=resLFCIl4virus) %>%
-  as_tibble(rownames = "ensembl_ID") %>%
-  left_join(featureNames) %>%
-  mutate(treatment = "virus") %>%
-  arrange(padj)
-
-resLFCIl4recomb <- results(dds, contrast = c("treatment","IL4_recomb","untreated"), independentFiltering=F)
-resLFCIl4recomb <- lfcShrink(dds, type = "ashr", res=resLFCIl4recomb) %>%
-  as_tibble(rownames = "ensembl_ID") %>%
-  left_join(featureNames) %>%
-  mutate(treatment = "recombinant") %>%
-  arrange(padj)
-
-resLFCIl6virus <- results(dds, contrast = c("treatment","IL6_20x","p123_20x"), independentFiltering=F)
-resLFCIl6virus <- lfcShrink(dds, type = "ashr", res=resLFCIl6virus) %>%
-  as_tibble(rownames = "ensembl_ID") %>%
-  left_join(featureNames) %>%
-  mutate(treatment = "virus") %>%
-  arrange(padj)
-
-resLFCIl6recomb <- results(dds, contrast = c("treatment","IL6_recomb","untreated"), independentFiltering=F)
-resLFCIl6recomb <- lfcShrink(dds, type = "ashr", res=resLFCIl6recomb) %>%
-  as_tibble(rownames = "ensembl_ID") %>%
-  left_join(featureNames) %>%
-  mutate(treatment = "recombinant") %>%
-  arrange(padj)
-
-resLFCIl12virus <- results(dds, contrast = c("treatment","IL12_20x","p123_20x"), independentFiltering=F)
-resLFCIl12virus <- lfcShrink(dds, type = "ashr", res=resLFCIl12virus) %>%
-  as_tibble(rownames = "ensembl_ID") %>%
-  left_join(featureNames) %>%
-  mutate(treatment = "virus") %>%
-  arrange(padj)
-
-resLFCIl12recomb <- results(dds, contrast = c("treatment","IL12_recomb","untreated"), independentFiltering=F)
-resLFCIl12recomb <- lfcShrink(dds, type = "ashr", res = resLFCIl12recomb) %>%
-  as_tibble(rownames = "ensembl_ID") %>%
-  left_join(featureNames) %>%
-  mutate(treatment = "recombinant") %>%
-  arrange(padj)
-
-resLFCvirus <- results(dds, contrast = c("treatment","p123_1e11","untreated"), independentFiltering=F)
-resLFCvirus <- lfcShrink(dds, type = "ashr", res=resLFCvirus) %>%
-  as_tibble(rownames = "ensembl_ID") %>%
-  left_join(featureNames) %>%
-  arrange(padj)
-
-resLFCvirus2 <- results(dds, contrast = c("treatment","p123_1e11","p123_1e10"), independentFiltering=F)
-resLFCvirus2 <- lfcShrink(dds, type = "ashr", res=resLFCvirus2) %>%
-  as_tibble(rownames = "ensembl_ID") %>%
-  left_join(featureNames) %>%
-  arrange(padj)
-```
-
-
-```{r, fig.height=12, fig.width=16}
-# Merge the reference tibble with the comparison data
-comparisonTibIl4 <- resLFCIl4virus %>%
-  left_join(resLFCIl4recomb, by = "ensembl_ID", suffix = c("", "_ref")) %>%
-  mutate(
-    significance = case_when(
-      padj_ref < 0.1 & padj < 0.1 ~ "both",
-      padj_ref < 0.1 ~ "recombinant specific",
-      padj < 0.1 ~ "virus specific",
-      TRUE ~ "none"
-    )) %>%
-  mutate(significance = factor(significance, c("none","recombinant specific","virus specific","both"))
-  ) %>%
-  filter(significance != "none")
-
-# Plotting
-p1 <- ggplot(comparisonTibIl4, aes(x = log2FoldChange_ref, y = log2FoldChange, color = significance)) +
-  geom_point() +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Dark2") +
-  xlim(-5,7)+
-  ylim(-5,7)+
-  labs(
-    title = "IL4",
-    x = "log2FC (recombinant)",
-    y = "log2FC (virus)"
-  )
-
-# Merge the reference tibble with the comparison data
-comparisonTibIl6 <- resLFCIl6virus %>%
-  left_join(resLFCIl6recomb, by = "ensembl_ID", suffix = c("", "_ref")) %>%
-  mutate(
-    significance = case_when(
-      padj_ref < 0.1 & padj < 0.1 ~ "both",
-      padj_ref < 0.1 ~ "recombinant specific",
-      padj < 0.1 ~ "virus specific",
-      TRUE ~ "none"
-    )) %>%
-  mutate(significance = factor(significance, c("none","recombinant specific","virus specific","both"))
-  ) %>%
-  filter(significance != "none")
-
-# Plotting
-p2 <- ggplot(comparisonTibIl6, aes(x = log2FoldChange_ref, y = log2FoldChange, color = significance)) +
-  geom_point() +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Dark2") +
-  xlim(-7,8)+
-  ylim(-7,8)+
-  labs(
-    title = "IL6",
-    x = "log2FC (recombinant)",
-    y = "log2FC (virus)"
-  )
-  
-
-# Merge the reference tibble with the comparison data
-comparisonTibIl12 <- resLFCIl12virus %>%
-  left_join(resLFCIl12recomb, by = "ensembl_ID", suffix = c("", "_ref")) %>%
-  mutate(
-    significance = case_when(
-      padj_ref < 0.1 & padj < 0.1 ~ "both",
-      padj_ref < 0.1 ~ "recombinant specific",
-      padj < 0.1 ~ "virus specific",
-      TRUE ~ "none"
-    )) %>%
-  mutate(significance = factor(significance, c("none","recombinant specific","virus specific","both"))
-  ) %>%
-  filter(significance != "none")
-
-# Plotting
-p3 <- ggplot(comparisonTibIl12, aes(x = log2FoldChange_ref, y = log2FoldChange, color = significance)) +
-  geom_point() +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Dark2") +
-  xlim(-2.5,5)+
-  ylim(-2.5,5)+
-  labs(
-    title = "IL12",
-    x = "log2FC (recombinant)",
-    y = "log2FC (virus)"
-  )
-
-plot_grid(p1,p2,p3,ncol = 2)
-```
-
-```{r, fig.height=6, fig.width=6}
-library(ggrepel)
-
-resLFCvirus %>%
-  filter(padj < 0.1) %>%
-  ggplot(aes(x = log2FoldChange, y = -log10(padj))) +
-    geom_point() +
-    geom_text_repel(aes(label = gene),show.legend = FALSE) +
-    ggtitle("2e11 LP/mL vs untreated padj < 0.1") +
-    guides(colour = guide_legend(override.aes = list(size=1))) +
-    theme(aspect.ratio = 1)
-
-nrow(resLFCvirus2 %>% filter(padj < 0.1))
-```
-
-There are no significant DEGs in 2e11 vs 2e10 comparison
-
-```{r, fig.height=18, fig.width=12}
-Il4shared <- filter(comparisonTibIl4, significance == "both")$gene
-Il6shared <- filter(comparisonTibIl6, significance == "both")$gene
-Il12shared <- filter(comparisonTibIl12, significance == "both")$gene
-
-p1 <- resLFCIl4virus %>%
-  filter(padj < 0.1) %>%
-  mutate(shared = ifelse(gene %in% Il4shared, "yes","no")) %>%
-  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
-    geom_point() +
-    scale_color_brewer(palette = "Dark2") +
-    ggtitle("IL4 virus padj < 0.1") +
-    theme(aspect.ratio = 1)
-p2 <- resLFCIl4recomb %>%
-  filter(padj < 0.1) %>%
-  mutate(shared = ifelse(gene %in% Il4shared, "yes","no")) %>%
-  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
-    geom_point() +
-    scale_color_brewer(palette = "Dark2") +
-    ggtitle("IL4 recombinant padj < 0.1") +
-    theme(aspect.ratio = 1)
-
-p3 <- resLFCIl6virus %>%
-  filter(padj < 0.1) %>%
-  mutate(shared = ifelse(gene %in% Il6shared, "yes","no")) %>%
-  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
-    geom_point() +
-    scale_color_brewer(palette = "Dark2") +
-    ggtitle("IL6 virus padj < 0.1") +
-    theme(aspect.ratio = 1)
-p4 <- resLFCIl6recomb %>%
-  filter(padj < 0.1) %>%
-  mutate(shared = ifelse(gene %in% Il6shared, "yes","no")) %>%
-  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
-    geom_point() +
-    scale_color_brewer(palette = "Dark2") +
-    ggtitle("IL6 recombinant padj < 0.1") +
-    theme(aspect.ratio = 1)
-
-p5 <- resLFCIl12virus %>%
-  filter(padj < 0.1) %>%
-  mutate(shared = ifelse(gene %in% Il12shared, "yes","no")) %>%
-  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
-    geom_point() +
-    scale_color_brewer(palette = "Dark2") +
-    ggtitle("IL12 virus padj < 0.1") +
-    theme(aspect.ratio = 1)
-p6 <- resLFCIl12recomb %>%
-  filter(padj < 0.1) %>%
-  mutate(shared = ifelse(gene %in% Il12shared, "yes","no")) %>%
-  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = shared)) +
-    geom_point() +
-    scale_color_brewer(palette = "Dark2") +
-    ggtitle("IL12 recombinant padj < 0.1") +
-    theme(aspect.ratio = 1)
-
-plot_grid(p1,p2,p3,p4,p5,p6,ncol = 2)
-```
-
-
-```{r}
-write_csv(comparisonTibIl4, "analysis_outs/deg_IL4.csv")
-write_csv(comparisonTibIl6, "analysis_outs/deg_IL6.csv")
-write_csv(comparisonTibIl12, "analysis_outs/deg_IL12.csv")
-write_csv(resLFCvirus, "analysis_outs/deg_p123-1e11_untreated.csv")
-write_csv(resLFCvirus2, "analysis_outs/deg_p123-1e11_1e10.csv")
-```
-
-
-INSERT UPSET PLOTS
 
 
 
