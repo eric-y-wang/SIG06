@@ -242,7 +242,7 @@ print(deg_count)
 
 #### Barplot of DEGs per Treatment
 
-```{r}
+```{r, fig.width=18, figheight = 12}
 library(ggplot2)
 
 ggplot(deg_count, aes(x = treatment, y = DEG_count, fill = treatment)) +
