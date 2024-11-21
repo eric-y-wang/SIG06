@@ -199,14 +199,14 @@ linkerGroups
 ### Run DEG Analysis
 
 ```{r}
-res_viral <- iterative_DEG(viralGroups)
-write_csv(res_viral, "../analysis_outs/res_viral.csv")
-
-res_recomb_vs_none <- iterative_DEG(recombGroups, "none")
-write_csv(res_recomb_vs_none, "../analysis_outs/res_recomb_vs_none.csv")
-
-res_linker_vs_none <- iterative_DEG(linkerGroups, "none")
-write_csv(res_linker_vs_none, "../analysis_outs/res_linker_vs_none.csv")
+# res_viral <- iterative_DEG(viralGroups)
+# write_csv(res_viral, "../analysis_outs/res_viral.csv")
+# 
+# res_recomb_vs_none <- iterative_DEG(recombGroups, "none")
+# write_csv(res_recomb_vs_none, "../analysis_outs/res_recomb_vs_none.csv")
+# 
+# res_linker_vs_none <- iterative_DEG(linkerGroups, "none")
+# write_csv(res_linker_vs_none, "../analysis_outs/res_linker_vs_none.csv")
 ```
 
 ```{r}
