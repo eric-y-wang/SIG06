@@ -1,0 +1,642 @@
+---
+title: "Zumpano SIG06 DEseq Analysis"
+author: "Ian Zumpano"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+    html_preview: false
+  html_notebook:
+    toc: true
+    toc_float: true
+---
+
+```{r setup}
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+library(DESeq2)
+library(ComplexHeatmap)
+library(IHW)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+source("../functions/plotting_fxns.R")
+theme_set(theme_Publication())
+```
+
+### [Import Data]{.underline}
+
+```{r}
+data <- read.csv("../processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = "X")
+
+metadata <- read_csv("../processing_outs/processed_metadata_SIG06.csv")
+
+# import feature names
+featureNames <- read_csv("../processing_outs/featureNames_SIG06.csv")
+featureNames <- select(featureNames, -category)
+```
+
+### [Normalization and Diagnostic Plots]{.underline}
+
+```{r}
+# prepare metadata for DESeq
+metaDF <- as.data.frame(metadata[,-1])
+rownames(metaDF) <- metadata$sample_ID
+
+# match matrix and metadata
+data <- data[,rownames(metaDF)]
+```
+
+```{r}
+# # create DEseq object
+# dds <- DESeqDataSetFromMatrix(data,
+#                               colData = metaDF,
+#                               design = ~ treatment + replicate)
+# 
+# # prefilter dds
+# # remove any gene with fewer than 5 counts in the smallest group size
+# smallestGroupSize <- 3
+# keep <- rowSums(counts(dds) >= 2) >= smallestGroupSize
+# dds <- dds[keep,]
+```
+
+#### Read normalized counts
+
+```{r}
+# dds <- estimateSizeFactors(dds)
+```
+
+```{r}
+# normCounts <- counts(dds, normalized=T) %>%
+#   as_tibble(rownames = "ensembl_ID") %>%
+#   left_join(featureNames)
+# 
+# write_csv(normCounts, "../analysis_outs/counts_norm_DEseq2.csv")
+
+normCounts <- read.csv("../analysis_outs/counts_norm_DEseq2.csv")
+```
+
+### [DEG Analysis]{.underline}
+
+#### Create DESeq object
+
+```{r}
+# # perform DE analysis
+# dds <- DESeq(dds, parallel = TRUE)
+```
+
+```{r}
+# # save dds object
+# saveRDS(dds, "analysis_outs/dds_object_SIG07.rds")
+
+# import dds object
+dds <- readRDS("/Users/izumpano/Desktop/Eric Analyses/SIG06/analysis_outs/dds_object_SIG06.rds")
+```
+
+#### Calculate DEGs
+
+Made a quick helper function to calculate DEGs.
+```{r}
+# library(IHW)
+# library(BiocParallel)
+# 
+# #Configure the amount of cores used (mac/linux specific function)
+# # cores <- MulticoreParam(workers = 8) #8 cores
+# 
+# # import feature names (used in function below)
+# featureNames <- read_csv("../processing_outs/featureNames_SIG06.csv")
+# featureNames <- select(featureNames, -category)
+# 
+# # sample input can be single character or vector of characters
+# # control input must be single character, defaults to linker
+# iterative_DEG <- function(samples, control = "linker"){
+#   # empty tibble for full DEG list
+#   resAll <- tibble()
+#   for(ligand in samples){
+#     print(ligand)
+#     # perform IHW DEG analysis
+#     # don't perform independent filtering because using IHW
+#     res <- results(dds, contrast = c("treatment",ligand,control),
+#                  independentFiltering=F,
+#                  filterFun = ihw,
+#                  parallel = T)
+#                  #BPPARAM = cores 
+#     
+#     # perform LFC shrinkage and make tidy
+#     # pass res to lfcShrink
+#     resTidy <- lfcShrink(dds, type = "ashr", res=res) %>%
+#       as_tibble(rownames = "ensembl_ID") %>%
+#       left_join(featureNames) %>%
+#       mutate(treatment = ligand) %>%
+#       arrange(padj)
+#     
+#     # add to full DEG list
+#     resAll <- bind_rows(resAll, resTidy)
+#   }
+#   return(resAll)
+# }
+```
+
+```{r}
+iterative_DEG <- function(samples, control = "linker") {
+  # Empty tibble for full DEG list
+  resAll <- tibble()
+  
+  # Iterate through ligands in samples
+  for (ligand in samples) {
+    
+    # Perform IHW DEG analysis
+    res <- results(
+      dds,
+      contrast = c("treatment", ligand, control),
+      independentFiltering = FALSE,
+      filterFun = ihw,
+      parallel = TRUE
+    )
+    
+    # Perform LFC shrinkage
+    resTidy <- lfcShrink(dds, type = "ashr", res = res) %>%
+      as_tibble(rownames = "ensembl_ID") %>%
+      left_join(featureNames, by = "ensembl_ID") %>%
+      mutate(treatment = ligand) %>%
+      arrange(padj)
+    
+    # Append results to cumulative tibble
+    resAll <- bind_rows(resAll, resTidy)
+  }
+  
+  return(resAll)
+}
+```
+
+
+#### Create Treatment Groups 
+
+```{r}
+# select viral treatments groups
+viralGroups <- dds$treatment %>% unique()
+viralGroups <- viralGroups[grep("recomb|none|linker", viralGroups, invert = T)]
+viralGroups
+```
+
+```{r}
+# select recombinant treatments groups
+recombGroups <- dds$treatment %>% unique()
+recombGroups <- grep("recomb", recombGroups, value = T)
+recombGroups
+```
+
+```{r}
+# select linkers
+linkerGroups <- dds$treatment %>% unique()
+linkerGroups <- grep("linker", linkerGroups, value = T)
+linkerGroups
+```
+
+### Run DEG Analysis
+
+```{r}
+res_viral <- iterative_DEG(viralGroups)
+write_csv(res_viral, "../analysis_outs/res_viral.csv")
+
+res_recomb_vs_none <- iterative_DEG(recombGroups, "none")
+write_csv(res_recomb_vs_none, "../analysis_outs/res_recomb_vs_none.csv")
+
+res_linker_vs_none <- iterative_DEG(linkerGroups, "none")
+write_csv(res_linker_vs_none, "../analysis_outs/res_linker_vs_none.csv")
+```
+
+
+### Count and Visualize DEGs per Treatment
+
+#### Count DEGs per Treatment
+
+```{r}
+res_viral <-  read.csv("../analysis_outs/res_viral.csv")
+
+# Define significance threshold
+significant_padj_threshold <- 0.1
+
+# Count DEGs for each treatment, including treatments with zero DEGs
+deg_count <- res_viral %>%
+  filter(padj < significant_padj_threshold) %>%
+  group_by(treatment) %>%
+  summarize(DEG_count = n(), .groups = "drop") %>%
+  complete(treatment = viralGroups, fill = list(DEG_count = 0)) %>%   # Fill missing treatments with 0
+  arrange(desc(DEG_count))
+  
+res_viral_sig <- res_viral %>%
+  filter(padj < significant_padj_threshold)
+
+write_csv(res_viral_sig, "../analysis_outs/res_viral_sig.csv")
+
+print(deg_count)
+```
+
+#### Barplot of DEGs per Treatment
+
+```{r}
+library(ggplot2)
+
+ggplot(deg_count, aes(x = treatment, y = DEG_count, fill = treatment)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  labs(title = "Number of DEGs per Treatment", x = "Treatment", y = "DEG Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+### Create Volcano Plots
+
+```{r}
+library(patchwork)
+
+res_viral_volcano <- res_viral %>% 
+                  mutate(threshold_DE = padj < 0.05 & abs(log2FoldChange) >= 0.58)
+
+#helper function to create volcano plots
+plot_volcano <- function(ligand){
+  ## Volcano plot
+  res_viral_volcano %>%
+    filter(treatment == ligand) %>%
+    ggplot(aes(x = log2FoldChange, y = -log10(padj), colour = threshold_DE)) +
+          geom_point() +
+          ggtitle(ligand) +
+          xlab("log2 fold change") + 
+          ylab("-log10 adjusted p-value")
+  }
+
+volcano_plots <- lapply(viralGroups, plot_volcano)
+volcano_plots_grid <- wrap_plots(volcano_plots, ncol = 4)
+
+volcano_plots_grid
+```
+
+### UMAP Analysis
+
+#### Perform UMAP
+
+```{r}
+library(umap)
+
+dds_norm <- vst(dds)
+
+# First we are going to retrieve the normalized data
+# from the `DESeqDataSet` object using the `assay()` function
+normalized_counts_umap <- assay(dds_norm) %>%
+  t() # We need to transpose this data so each row is a sample
+
+# Now perform UMAP on the normalized data
+umap_results <- umap::umap(normalized_counts_umap)
+```
+
+#### Prepare data frame for plotting
+
+```{r}
+# Make into data frame for plotting with `ggplot2`
+# The UMAP values we need for plotting are stored in the `layout` element
+umap_plot_df <- data.frame(umap_results$layout) %>%
+  # Turn sample IDs stored as row names into a column
+  tibble::rownames_to_column("sample_ID") %>%
+  # Add the metadata into this data frame; match by sample IDs
+  dplyr::inner_join(metadata, by = "sample_ID")
+
+
+#Create Well to row col dataset
+umap_plot_df_well_rowcol <- umap_plot_df %>%
+  mutate(
+    well_row = sub("\\d+", "", well),       # Extract the letter (row)
+    well_column = as.numeric(sub("\\D+", "", well)) # Extract the number (column)
+  )
+
+```
+
+#### Create UMAP Plots
+
+```{r, fig.height=10, fig.width=12}
+library(ggrepel)
+library(patchwork)
+
+p1 <- ggplot(umap_plot_df, aes(x = X1, y = X2, color = replicate)) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP by Group")
+
+p2 <- ggplot(umap_plot_df, aes(x = X1, y = X2, color = plate)) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP by RNA-seq Plate")
+
+p3 <- ggplot(umap_plot_df_well_rowcol, aes(x = X1, y = X2, color = well_row)) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP by Row")
+
+p4 <- ggplot(umap_plot_df_well_rowcol, aes(x = X1, y = X2, color = factor(well_column))) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP by Column")
+
+
+
+p1+p2+p3+p4+plot_layout(ncol=2)
+# highlight which cells are the linker only cells
+# run a clustering algorithm on data to identify discrete clusters, then project clusters onto the umap to see which ligands are enriched clusters
+# simple heirarchical clustering
+
+```
+
+```{r}
+# tru to nullify effects of dif bio groups - construct a z score where for each bio group, take value of a col - control mean / ctrl std
+# linker_normCounts <- normCounts %>% select(contains("linker"))
+# linker_normCounts
+#take linkers in seperate matrix from normalized counts and calculate std dev for each gene
+#wide matrix : col samples row gene - row mean 
+
+#separate by group
+
+#make a matrix with only samples from one group by
+  #write a helper function to take the mean and std dev of the controls, then z score by group 
+
+
+
+
+normCounts_rownames <- normCounts %>% column_to_rownames(var = "ensembl_ID")
+
+# Define a function to process the dataset
+zscore_by_group <- function(data) {
+  # Step 1: Split the matrix into 3 smaller matrices by group
+  groups <- unique(sub(".*_group([0-9]+)_.*", "\\1", colnames(data)))
+  
+  # Initialize a list to store z-scored matrices
+  zscore_matrices <- list()
+  
+  for (group in groups) {
+    # Subset columns for the current group
+    group_cols <- grep(paste0("_group", group, "_"), colnames(data), value = TRUE)
+    group_matrix <- data[, group_cols, drop = FALSE]
+    
+    # Step 2: Identify linker columns
+    linker_cols <- grep("^linker", colnames(group_matrix), value = TRUE)
+    
+    # Calculate mean and standard deviation for linker columns
+    linker_mean <- rowMeans(group_matrix[, linker_cols, drop = FALSE])
+    linker_sd <- apply(group_matrix[, linker_cols, drop = FALSE], 1, sd)
+    
+    # Step 3: Z-score the group matrix using linker stats
+    zscored_group <- sweep(group_matrix, 1, linker_mean, "-") / linker_sd
+    
+    # Store the z-scored group matrix
+    zscore_matrices[[group]] <- zscored_group
+  }
+  
+  # Step 4: Combine the z-scored matrices back into a single dataframe
+  combined_zscores <- do.call(cbind, zscore_matrices)
+  
+  return(combined_zscores)
+}
+
+#run function on data and remove rows with na values
+zscored_data_group <- zscore_by_group(normCounts_rownames) 
+zscored_data_group <- na.omit(zscored_data_group)
+```
+
+
+#### Create New UMAP Using Z-scored data by group 
+
+```{r}
+# Now perform UMAP on the normalized data
+zscore_umap_results <- umap::umap(normalized_counts_umap)
+
+zscore_umap_plot_df <- data.frame(zscore_umap_results$layout) %>%
+  # Turn sample IDs stored as row names into a column
+  tibble::rownames_to_column("sample_ID") %>%
+  # Add the metadata into this data frame; match by sample IDs
+  dplyr::inner_join(metadata, by = "sample_ID")
+```
+
+#### Plot UMAP for Z-Scored data by Group
+```{r}
+library(ggrepel)
+library(patchwork)
+
+ggplot(zscore_umap_plot_df, aes(x = X1, y = X2, color = replicate)) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP")
+
+
+#make umap using only DE genes across all ligands
+#sig ligands unique genes
+
+#goal is to look at which ligands are similar to one another in transcriptional signature
+
+#also make correlation heatmap
+#take transcriptional signitures, take correlation between them, plot them on a heatmap, first, filter for top ~3k highly variable genes
+
+#correlation matrix, plot heatmap
+
+#pay attention to/play around with number of genes which gives you best cluster, can look at highly variable genes too, google
+
+```
+
+### UMAP using significant DEGs
+
+```{r}
+#Get genenames of significant DE genes
+sig_ID <- res_viral_sig %>% pull(ensembl_ID) %>% unique()
+
+#filter dds for sig genes
+dds_norm_sig <- dds_norm[rownames(dds_norm) %in% sig_ID, ]
+
+normalized_counts_sig_umap <- assay(dds_norm_sig) %>%
+  t() # We need to transpose this data so each row is a sample
+
+# Now perform UMAP on the normalized data
+umap_sig_results <- umap::umap(normalized_counts_sig_umap)
+
+umap_plot_sig_df <- data.frame(umap_sig_results$layout) %>%
+  # Turn sample IDs stored as row names into a column
+  tibble::rownames_to_column("sample_ID") %>%
+  # Add the metadata into this data frame; match by sample IDs
+  dplyr::inner_join(metadata, by = "sample_ID")
+
+
+ggplot(umap_plot_sig_df, aes(x = X1, y = X2, color = (treatment == "linker"))) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP (Sig Genes Only)")
+
+#For Comparison
+ggplot(umap_plot_df, aes(x = X1, y = X2, color = (treatment == "linker"))) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP (all genes)")
+```
+
+#### UMAP with top subset of DEGs
+
+```{r}
+#Get genenames of significant DE genes
+top_ID <- res_viral_sig %>% filter(padj < 0.05, log2FoldChange > 0.5) %>% pull(ensembl_ID) %>% unique()
+
+#filter dds for top genes
+dds_norm_top <- dds_norm[rownames(dds_norm) %in% top_ID, ]
+
+normalized_counts_top_umap <- assay(dds_norm_top) %>%
+  t() # We need to transpose this data so each row is a sample
+
+# Now perform UMAP on the normalized data
+umap_top_results <- umap::umap(normalized_counts_top_umap)
+
+umap_plot_top_df <- data.frame(umap_top_results$layout) %>%
+  # Turn sample IDs stored as row names into a column
+  tibble::rownames_to_column("sample_ID") %>%
+  # Add the metadata into this data frame; match by sample IDs
+  dplyr::inner_join(metadata, by = "sample_ID")
+#For Comparison
+ggplot(umap_plot_df, aes(x = X1, y = X2, color = (treatment == "linker"))) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP (all genes)")
+
+#plot top umap
+ggplot(umap_plot_top_df, aes(x = X1, y = X2, color = (treatment == "linker"))) +
+  geom_point(shape = 15) + 
+  labs(title="UMAP (top Genes Only)")
+```
+
+
+### Correlation Heatmaps
+
+```{r}
+#goal is to look at which ligands are similar to one another in transcriptional signature
+
+#also make correlation heatmap
+#take transcriptional signitures, take correlation between them, plot them on a heatmap, first, filter for top ~3k highly variable genes
+
+#correlation matrix, plot heatmap
+
+# also try zscore and vst norm counts
+
+# write a helper function that given a dataframe of normalized counts, outputs a correlation heatmap - meaning take transcriptional signitures, take correlation between them, plot them on a heatmap
+
+```
+
+```{r}
+library(pheatmap)
+library(RColorBrewer)
+
+# Helper function to create a correlation heatmap
+# Helper function to create a ligand-based correlation heatmap
+plot_ligand_correlation_heatmap <- function(norm_counts, method = "pearson", color_palette = "RdYlBu", cluster_rows = TRUE, cluster_cols = TRUE) {
+  # norm_counts: A dataframe or matrix of normalized counts (genes x ligands)
+  # method: Correlation method ("pearson", "spearman", or "kendall")
+  # color_palette: Color palette for the heatmap (default is "RdYlBu")
+  # cluster_rows, cluster_cols: Logical, whether to cluster rows and columns
+  
+  # Step 1: Compute correlation matrix between ligands
+  correlation_matrix <- cor(norm_counts, method = method)
+  
+  # Step 2: Plot heatmap
+  pheatmap(
+    correlation_matrix,
+    color = colorRampPalette(brewer.pal(11, color_palette))(100),
+    cluster_rows = cluster_rows,
+    cluster_cols = cluster_cols,
+    main = paste(method, "Correlation Heatmap of Ligands")
+  )
+}
+
+normCounts_rows <-normCounts %>% column_to_rownames("ensembl_ID") %>% select(-gene)
+
+plot_ligand_correlation_heatmap(normCounts_rows)
+
+#would i have to use ensemble ID for the heatmaps?
+
+#take each ligand and do correlation between different ligands, correlating gene expression between ligands
+
+
+#control T/F, biological group. complex heatmap fn?, annotation that is the numbe of DE Genes, remove row titles and add all annotations
+
+#make separate heatmap instead of plotting all replicates plot avg expression of each replicate
+
+maybe remove recomb and none
+
+```
+
+```{r}
+metadata$treatment_type <- ifelse(metadata$treatment == "linker", "Linker",
+                                    ifelse(metadata$treatment == "none", "None", "Other")) %>% as_factor()
+
+annotation <- metadata %>% 
+	select(sample_ID, replicate, plate, treatment_type) %>% data.frame(row.names = "sample_ID")
+  
+
+  
+```
+
+```{r}
+annotation_colors <- list(
+    replicate = c(group1 = "darkblue", group2 = "darkgreen", group3 = "darkred"),  # Adjust colors as needed
+    plate = c(plate1 = "purple", plate2 = "orange", plate3 = "yellow", plate4 = "black"),  # Adjust colors as needed
+    treatment_type = c(Linker = "blue", None = "red", Other = "gray"))  # Adjust colors as needed
+
+dark2_pal <- brewer.pal(8, "Dark2")
+
+plot_ligand_correlation_heatmap <- function(norm_counts, metadata, method = "pearson", color_palette = "RdYlBu") {
+  # Compute correlation matrix
+  correlation_matrix <- cor(norm_counts, method = method)
+  
+  # # Customize annotation colors
+  # annotation_colors <- list(
+  #   replicate = c(group1 = dark2_pal[1], group2 = dark2_pal[2], group3 = dark2_pal[3]),
+  #   plate = c(plate1 = dark2_pal[4], plate2 = dark2_pal[5], plate3 = dark2_pal[6]),
+  #   treatment_type = c(Linker = "blue", None = "gray", Other = "red")
+  # )
+  
+  # Plot heatmap
+  pheatmap(
+    correlation_matrix,
+    annotation_col = annotation,
+    annotation_row = annotation,
+    annotation_colors = annotation_colors,
+    show_rownames = FALSE,
+    show_colnames = FALSE,
+    color = colorRampPalette(brewer.pal(11, color_palette))(100),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    legend = TRUE,
+    main = paste(method, "Correlation Heatmap of Ligands")
+  )
+}
+#plot_ligand_correlation_heatmap(normCounts_rows, metadata)
+
+#normCounts_zscored <-zscored_data_group %>%select(-gene)
+
+#plot_ligand_correlation_heatmap(zscored_data_group)
+
+
+gene_means <- rowMeans(normCounts_vst)
+gene_variances <- apply(normCounts_vst, 1, var)
+
+# You can define HVGs based on variance-to-mean ratio or top quantiles
+variance_to_mean_ratio <- gene_variances / gene_means
+
+# Define a threshold for selecting HVGs
+threshold <- quantile(variance_to_mean_ratio, 0.9)  # Top 25% most variable genes
+highly_variable_genes <- names(variance_to_mean_ratio)[variance_to_mean_ratio > threshold]
+
+# Subset your data to include only highly variable genes
+normCounts_HVG <- normCounts_vst[highly_variable_genes, ]
+
+dim(normCounts_HVG)
+
+top_ligands <- res_viral_sig %>% filter(padj < 0.05, log2FoldChange > 0.5) %>% pull(treatment) %>% unique()
+
+#just need to filter the rownames to be within the ligands list
+
+normCounts_DEG <- normCounts_vst[grepl(paste(top_ligands, collapse = "|"), sub("_.*", "", rownames(normCounts_vst))), ]
+
+plot_ligand_correlation_heatmap(normCounts_DEG, metadata)
+
+
+#only plot ligands that have DEgenes
+```
+
+
