@@ -169,13 +169,46 @@ top_ligands <- res_viral %>% filter(padj < 0.01) %>% pull(treatment) %>% unique(
 pattern <- paste(top_ligands, collapse = "|")
 cols  <- stri_detect_regex(names(normCounts_rows), pattern)
 normCounts_DEG <- normCounts_rows[, cols]
-dim(normCounts_DEG)
 
 
 annotation_DEG <- annotation[rownames(annotation) %in% colnames(normCounts_DEG), , drop = FALSE]
 
 plot_ligand_correlation_heatmap(normCounts_DEG, metadata, annotation = annotation_DEG, title = "(Top DEG Ligands)")
+```
 
+#### Correlation heatmap of most highly variable genes (not working yet)
+
+```{r}
+library(matrixStats)
+
+# Compute row-wise variance
+row_variances <- rowVars(as.matrix(normCounts_vst))
+
+# Find the threshold for the top 10% most variable genes
+threshold <- quantile(row_variances, 0.9)
+
+# Get the indices of rows that meet or exceed the threshold
+top_variable_indices <- which(row_variances >= threshold)
+
+# Extract the row names corresponding to the top 10% most variable genes
+top_hvg <- rownames(normCounts_vst)[top_variable_indices]
+
+top_hvg_ligands <- res_viral %>% filter(ensembl_ID %in% top_hvg) %>% pull(treatment) %>% unique()
+
+pattern_hvg <- paste(top_hvg_ligands, collapse = "|")
+#problem in this line. returning logical(0). Used same approach as above. not sure why not working. difference in structure of the dataset between normcounts rows and vst.
+cols_hvg  <- stri_detect_regex(names(normCounts_vst), pattern_hvg)
+normCounts_HVG <- normCounts_vst[, cols_hvg] 
+
+normCounts_HVG <- 
+
+annotation_HVG <- annotation[rownames(annotation) %in% colnames(normCounts_HVG), , drop = FALSE]
+
+plot_ligand_correlation_heatmap(normCounts_HVG, metadata, annotation = annotation_HVG, title = "(Top HVG Ligands)")
+
+cols_hvg
+view(normCounts_vst
+     )
 
 ```
 
