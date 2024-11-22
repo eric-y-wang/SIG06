@@ -197,18 +197,12 @@ top_hvg_ligands <- res_viral %>% filter(ensembl_ID %in% top_hvg) %>% pull(treatm
 
 pattern_hvg <- paste(top_hvg_ligands, collapse = "|")
 #problem in this line. returning logical(0). Used same approach as above. not sure why not working. difference in structure of the dataset between normcounts rows and vst.
-cols_hvg  <- stri_detect_regex(names(normCounts_vst), pattern_hvg)
-normCounts_HVG <- normCounts_vst[, cols_hvg] 
-
-normCounts_HVG <- 
-
-annotation_HVG <- annotation[rownames(annotation) %in% colnames(normCounts_HVG), , drop = FALSE]
-
-plot_ligand_correlation_heatmap(normCounts_HVG, metadata, annotation = annotation_HVG, title = "(Top HVG Ligands)")
-
-cols_hvg
-view(normCounts_vst
-     )
+# cols_hvg  <- stri_detect_regex(names(normCounts_vst), pattern_hvg)
+# normCounts_HVG <- normCounts_vst[, cols_hvg] 
+# 
+# annotation_HVG <- annotation[rownames(annotation) %in% colnames(normCounts_HVG), , drop = FALSE]
+# 
+# plot_ligand_correlation_heatmap(normCounts_HVG, metadata, annotation = annotation_HVG, title = "(Top HVG Ligands)")
 
 ```
 
