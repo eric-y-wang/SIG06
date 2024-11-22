@@ -19,6 +19,7 @@ library(patchwork)
 library(DESeq2)
 library(ComplexHeatmap)
 library(IHW)
+library(RColorBrewer)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
