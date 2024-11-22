@@ -120,8 +120,6 @@ annotation_colors <- list(
   treatment_type = c(Linker = "blue", None = "red", Other = "gray")
 )
 
-dark2_pal <- brewer.pal(8, "Dark2")
-
 plot_ligand_correlation_heatmap <- function(norm_counts, metadata, annotation, method = "pearson", color_palette = "RdYlBu", title = "") {
   # Compute correlation matrix
   correlation_matrix <- cor(norm_counts, method = method)
