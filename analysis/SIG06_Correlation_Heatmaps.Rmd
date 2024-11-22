@@ -141,43 +141,6 @@ plot_ligand_correlation_heatmap <- function(norm_counts, metadata, annotation, m
     main = paste(method, "Correlation Heatmap of Ligands", title)
   )
 }
-#plot_ligand_correlation_heatmap(normCounts_rows, metadata)
-
-#normCounts_zscored <-zscored_data_group %>%select(-gene)
-
-#plot_ligand_correlation_heatmap(zscored_data_group)
-
-plot_ligand_correlation_heatmap(normCounts_vst, metadata)
-
-
-gene_means <- rowMeans(normCounts_vst)
-gene_variances <- apply(normCounts_vst, 1, var)
-
-# You can define HVGs based on variance-to-mean ratio or top quantiles
-variance_to_mean_ratio <- gene_variances / gene_means
-
-# Define a threshold for selecting HVGs
-threshold <- quantile(variance_to_mean_ratio, 0.9)  # Top 25% most variable genes
-highly_variable_genes <- names(variance_to_mean_ratio)[variance_to_mean_ratio > threshold]
-
-# Subset your data to include only highly variable genes
-normCounts_HVG <- normCounts_vst[highly_variable_genes, ]
-
-dim(normCounts_HVG)
-
-top_ligands <- res_viral_sig %>% filter(padj < 0.05, log2FoldChange > 0.5) %>% pull(treatment) %>% unique()
-
-#just need to filter the rownames to be within the ligands list
-
-normCounts_DEG <- normCounts_vst[grepl(paste(top_ligands, collapse = "|"), sub("_.*", "", rownames(normCounts_vst))), ]
-
-
-
-plot_ligand_correlation_heatmap(normCounts_DEG, metadata)
-
-metadata
-
-#only plot ligands that have DEgenes
 ```
 
 #### Heatmap for all ligands using normalized counts
