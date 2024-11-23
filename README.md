@@ -10,4 +10,15 @@ Screen single ligands and identifiy candidates for combinatorial studies in acti
 
 **Sequencing**: RNA-seq libraries were prepared using BRB-seq with no normalization of RNA quantity. RNA-seq libraries were processed in 4 separate plates.
 
+### Analysis
+#### 1. Identify robust clusters of ligand-driven transcriptional phenotypes.
+Ultimately, the goal of this experiment is to identify single ligands 
+#### 2. Identify covariates driving variation between groups.
+There seems to consistently be some type of batch effect driving divergence of linker-only samples and variation in ligand-treated samples with weaker perturbation effects. For ligands with strong perturbations, I think the strength of transcriptonal changes masks these group to group variation. I can imagine a number of potential reasons for this.
+* **sequencing depth (can be fixed)**
+  * Because of the nature of BRB-seq, because I didn't do any RNA normalization prior to input into the library given the equal cell numbers in each well, and because the different library pools weren't sequenced equally there's some level of variability in the sequencing depth across given plates and samples. This can be seen in **/processing/count_matrix_generation.Rmd**.
+* **true biological variability**
+* **differences in RNA-seq plate to plate library preparation**
+#### 3. Examine believability of "type 1" signature across diverse ligands.
+#### 4. Compare concordance between recombinant protein and viral ligand stimulation.
 
