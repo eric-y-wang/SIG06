@@ -215,9 +215,9 @@ viralGroups
 ```
 
 ```{r}
-res <- iterative_DEG("GDF7")
-res2 <- iterative_DEG("IFNA")
-res3 <- iterative_DEG("IL12")
+res <- iterative_DEG("CXCL9")
+res2 <- iterative_DEG("CXCL10")
+res3 <- iterative_DEG("CXCL13")
 res4 <- iterative_DEG("IL12recomb","none")
 res5 <- iterative_DEG("IL6","linker")
 res6 <- iterative_DEG("linker","none")
