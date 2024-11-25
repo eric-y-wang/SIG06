@@ -199,14 +199,18 @@ linkerGroups
 ### Run DEG Analysis
 
 ```{r}
-res_viral <- iterative_DEG(viralGroups)
-write_csv(res_viral, "../analysis_outs/res_viral.csv")
+# res_viral <- iterative_DEG(viralGroups)
+# write_csv(res_viral, "../analysis_outs/res_viral.csv")
+# 
+# res_recomb_vs_none <- iterative_DEG(recombGroups, "none")
+# write_csv(res_recomb_vs_none, "../analysis_outs/res_recomb_vs_none.csv")
+# 
+# res_linker_vs_none <- iterative_DEG(linkerGroups, "none")
+# write_csv(res_linker_vs_none, "../analysis_outs/res_linker_vs_none.csv")
+```
 
-res_recomb_vs_none <- iterative_DEG(recombGroups, "none")
-write_csv(res_recomb_vs_none, "../analysis_outs/res_recomb_vs_none.csv")
-
-res_linker_vs_none <- iterative_DEG(linkerGroups, "none")
-write_csv(res_linker_vs_none, "../analysis_outs/res_linker_vs_none.csv")
+```{r}
+res_viral <-  read.csv("../analysis_outs/res_viral.csv") 
 ```
 
 
@@ -556,16 +560,18 @@ plot_ligand_correlation_heatmap(normCounts_rows)
 
 #make separate heatmap instead of plotting all replicates plot avg expression of each replicate
 
-maybe remove recomb and none
+#maybe remove recomb and none
 
 ```
 
 ```{r}
 metadata$treatment_type <- ifelse(metadata$treatment == "linker", "Linker",
-                                    ifelse(metadata$treatment == "none", "None", "Other")) %>% as_factor()
+                                    ifelse(metadata$treatment == "none", "None", "Other")) %>%  as_factor()
+
+metadata$log_nCount_RNA <- log10(metadata$nCount_RNA)
 
 annotation <- metadata %>% 
-	select(sample_ID, replicate, plate, treatment_type) %>% data.frame(row.names = "sample_ID")
+	select(sample_ID, replicate, plate, treatment_type, log_nCount_RNA) %>% data.frame(row.names = "sample_ID")
   
 
   
@@ -611,6 +617,8 @@ plot_ligand_correlation_heatmap <- function(norm_counts, metadata, method = "pea
 
 #plot_ligand_correlation_heatmap(zscored_data_group)
 
+plot_ligand_correlation_heatmap(normCounts_vst, metadata)
+
 
 gene_means <- rowMeans(normCounts_vst)
 gene_variances <- apply(normCounts_vst, 1, var)
@@ -635,6 +643,46 @@ normCounts_DEG <- normCounts_vst[grepl(paste(top_ligands, collapse = "|"), sub("
 
 plot_ligand_correlation_heatmap(normCounts_DEG, metadata)
 
+metadata
+
+#only plot ligands that have DEgenes
+```
+```{r}
+#plot_ligand_correlation_heatmap(normCounts_rows, metadata)
+
+#normCounts_zscored <-zscored_data_group %>%select(-gene)
+
+#plot_ligand_correlation_heatmap(zscored_data_group)
+
+plot_ligand_correlation_heatmap(normCounts_vst, metadata)
+
+
+gene_means <- rowMeans(normCounts_vst)
+gene_variances <- apply(normCounts_vst, 1, var)
+
+# You can define HVGs based on variance-to-mean ratio or top quantiles
+variance_to_mean_ratio <- gene_variances / gene_means
+
+# Define a threshold for selecting HVGs
+threshold <- quantile(variance_to_mean_ratio, 0.9)  # Top 25% most variable genes
+highly_variable_genes <- names(variance_to_mean_ratio)[variance_to_mean_ratio > threshold]
+
+# Subset your data to include only highly variable genes
+normCounts_HVG <- normCounts_vst[highly_variable_genes, ]
+
+dim(normCounts_HVG)
+
+top_ligands <- res_viral_sig %>% filter(padj < 0.05, log2FoldChange > 0.5) %>% pull(treatment) %>% unique()
+
+#just need to filter the rownames to be within the ligands list
+
+normCounts_DEG <- normCounts_vst[grepl(paste(top_ligands, collapse = "|"), sub("_.*", "", rownames(normCounts_vst))), ]
+
+
+
+plot_ligand_correlation_heatmap(normCounts_HVG, metadata, annotation)
+
+metadata
 
 #only plot ligands that have DEgenes
 ```
