@@ -214,3 +214,57 @@ plot_ligand_correlation_heatmap(normCounts_HVG, metadata, annotation = annotatio
 
 ```
 
+#### Average of Replicates Heatmap
+
+```{r, fig.width=20, fig.height=14}
+#make separate heatmap instead of plotting all replicates plot avg expression of each replicate
+
+library(purrr)
+
+treatment_groups <- names(normCounts_vst) %>%
+    str_extract("^[^_]+") %>% unique()
+
+# Function to calculate row-wise means for each treatment group
+library(dplyr)
+library(stringr)
+
+# Function to calculate row-wise means based on treatment groups
+rowwise_means <- function(dataset, treatment_groups) {
+  # Initialize an empty dataframe to store the results
+  result <- data.frame(row.names = rownames(dataset))
+  
+  # Loop over each treatment in treatment_groups
+  for (treatment in treatment_groups) {
+    # Select columns matching the current treatment
+    matching_cols <- dataset %>%
+      select(starts_with(treatment))
+    
+    # Calculate row-wise means for these columns
+    row_means <- rowMeans(matching_cols, na.rm = TRUE)
+    
+    # Add the row means as a new column in the result dataframe
+    result[[treatment]] <- row_means
+  }
+  
+  return(result)
+}
+
+
+normCounts_AVG <- rowwise_means(normCounts_vst, treatment_groups)
+
+#plot heatmap by hand bc no annotation
+correlation_matrix <- cor(normCounts_AVG, method = "pearson")
+  
+  # Plot heatmap
+pheatmap(
+    correlation_matrix,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    color = colorRampPalette(brewer.pal(11, "RdYlBu"))(100),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    legend = TRUE,
+    main = "Pearson Correlation Heatmap of Ligands (Mean Across Replicates)"
+  )
+```
+
