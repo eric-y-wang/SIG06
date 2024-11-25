@@ -20,6 +20,7 @@ library(DESeq2)
 library(ComplexHeatmap)
 library(IHW)
 library(RColorBrewer)
+library(viridis)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -133,7 +134,7 @@ plot_ligand_correlation_heatmap <- function(norm_counts, metadata, annotation, m
     annotation_colors = annotation_colors,
     show_rownames = FALSE,
     show_colnames = FALSE,
-    color = colorRampPalette(brewer.pal(11, color_palette))(100),
+    color = viridis(100, option = "magma"),
     cluster_rows = TRUE,
     cluster_cols = TRUE,
     legend = TRUE,
@@ -153,14 +154,16 @@ normCounts_vst <- as.data.frame(normCounts_vst)
 plot_ligand_correlation_heatmap(normCounts_vst, metadata, annotation = annotation, title = "(VST Normalized Counts)")
 ```
 
-#### Heatmap of only ligands with DEGs
+### Heatmap of Ligands by Number of DEGs
+
+#### 10 DEGs
 
 ```{r, fig.width=18, fig.height=12}
 library(stringi)
 library(stringr)
-# Create vector of ligands corresponding to DEGs
-top_ligands <- res_viral %>% filter(padj < 0.1) %>% pull(treatment) %>% unique()
-top_ligands
+
+# more than 10 DEGs
+DEG_10 <- res_viral %>% filter(padj < 0.1) %>% group_by(treatment) %>% summarize(DEG_count = n() >= 10) %>% filter(DEG_count == TRUE) %>% pull(treatment) %>% unique()
 
 # Helper function to extract columns corresponding to DE ligands
 filter_columns_by_ligands <- function(dataset, top_ligands) {
@@ -170,14 +173,54 @@ filter_columns_by_ligands <- function(dataset, top_ligands) {
   
   # Select only these columns
   dataset %>% select(all_of(columns_to_keep))
-}
+} 
 
 # Filter the dataset
-normCounts_DEG <- filter_columns_by_ligands(normCounts_rows, top_ligands)
+normCounts_DEG_10 <- filter_columns_by_ligands(normCounts_rows, DEG_10)
 
-annotation_DEG <- annotation[rownames(annotation) %in% colnames(normCounts_DEG), , drop = FALSE]
+annotation_DEG_10 <- annotation[rownames(annotation) %in% colnames(normCounts_DEG_10), , drop = FALSE]
 
-plot_ligand_correlation_heatmap(normCounts_DEG, metadata, annotation = annotation_DEG, title = "(Top DEG Ligands)")
+plot_ligand_correlation_heatmap(normCounts_DEG_10, metadata, annotation = annotation_DEG_10, title = "(Ligands with 10+ DEGs)")
+```
+
+#### 15+ DEGs
+
+```{r, fig.width=18, fig.height=12}
+# Filter the dataset
+DEG_15 <- res_viral %>% filter(padj < 0.1) %>% group_by(treatment) %>% summarize(DEG_count = n() >= 15) %>% filter(DEG_count == TRUE) %>% pull(treatment) %>% unique()
+
+normCounts_DEG_15 <- filter_columns_by_ligands(normCounts_rows, DEG_15)
+
+annotation_DEG_15 <- annotation[rownames(annotation) %in% colnames(normCounts_DEG_15), , drop = FALSE]
+
+plot_ligand_correlation_heatmap(normCounts_DEG_15, metadata, annotation = annotation_DEG_15, title = "(Ligands with 15+ DEGs)")
+```
+
+#### 50+ DEGs
+
+```{r, fig.width=18, fig.height=12}
+# Filter the dataset
+DEG_50 <- res_viral %>% filter(padj < 0.1) %>% group_by(treatment) %>% summarize(DEG_count = n() >= 50) %>% filter(DEG_count == TRUE) %>% pull(treatment) %>% unique()
+
+normCounts_DEG_50 <- filter_columns_by_ligands(normCounts_rows, DEG_50)
+
+annotation_DEG_50 <- annotation[rownames(annotation) %in% colnames(normCounts_DEG_50), , drop = FALSE]
+
+plot_ligand_correlation_heatmap(normCounts_DEG_50, metadata, annotation = annotation_DEG_50, title = "(Ligands with 50+ DEGs)")
+```
+
+#### 500+ DEGs
+
+```{r, fig.width=18, fig.height=12}
+# Filter the dataset
+DEG_500 <- res_viral %>% filter(padj < 0.1) %>% group_by(treatment) %>% summarize(DEG_count = n() >= 500) %>% filter(DEG_count == TRUE) %>% pull(treatment) %>% unique()
+
+normCounts_DEG_500 <- filter_columns_by_ligands(normCounts_rows, DEG_500)
+
+annotation_DEG_500 <- annotation[rownames(annotation) %in% colnames(normCounts_DEG_500), , drop = FALSE]
+
+plot_ligand_correlation_heatmap(normCounts_DEG_500, metadata, annotation = annotation_DEG_500, title = "(Ligands with 500+ DEGs)")
+
 ```
 
 #### Correlation heatmap of most highly variable genes (not working yet)
@@ -253,7 +296,7 @@ pheatmap(
     correlation_matrix,
     show_rownames = TRUE,
     show_colnames = TRUE,
-    color = colorRampPalette(brewer.pal(11, "RdYlBu"))(100),
+    color =  viridis(100, option = "magma"),
     cluster_rows = TRUE,
     cluster_cols = TRUE,
     legend = TRUE,
@@ -275,10 +318,8 @@ normCounts_AVG %>% select(names(normCounts_AVG) %in% top_hvg_ligands)
 
 setdiff(treatment_groups, top_hvg_ligands)
 ```
-
-
 ```{r}
-
-
+head(res_viral)
 ```
+
 
