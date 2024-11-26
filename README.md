@@ -21,9 +21,14 @@ There seems to consistently be some type of batch effect driving divergence of l
   * Because of the nature of BRB-seq, because I didn't do any RNA normalization prior to input into the library given the equal cell numbers in each well, and because the different library pools weren't sequenced equally there's some level of variability in the sequencing depth across given plates and samples. This can be seen in **/processing/count_matrix_generation.Rmd**.
 * **true biological variability**
 * **differences in RNA-seq plate to plate library preparation**
-##### Files:
+
+##### Files:  
+
 #### 3. Examine believability of "type 1" signature across diverse ligands.
-##### Files:
+
+##### Files:  
+
 #### 4. Compare concordance between recombinant protein and viral ligand stimulation.
+
 ##### Files:
 
