@@ -93,6 +93,8 @@ linkerGroups
 
 ```{r}
 res_viral <- read.csv("../analysis_outs/res_viral.csv")
+res_viral <- res_viral %>% filter(treatment %in% c("IL6", "IFNG", "IL12", "IL4", "IL2"))
+
 res_recomb <- read.csv("../analysis_outs/res_recomb_vs_none.csv")
 ```
 
@@ -190,6 +192,338 @@ for (pair_name in names(results)) {
           theme(plot.title = element_text(hjust = 0.5)) +
           coord_flip() 
         )
+}
+
+#venn diagrams can lack depth, need to go further. start by checking sequencing depth 
+```
+
+
+### Plotting heatmaps of L2FC among DEGs
+
+```{r}
+library(pheatmap)
+library(ComplexHeatmap)
+library(RColorBrewer)
+
+# Function to extract data for heatmaps
+prepare_heatmap_data <- function(pair_name, results, res_viral, res_recomb) {
+  # Get DEG lists for the treatment pair
+  pair_data <- results[[pair_name]]
+  shared_genes <- pair_data$genes_common
+  unique_genes_viral <- pair_data$genes_unique_viral
+  unique_genes_recomb <- pair_data$genes_unique_recomb
+  
+  # Combine all DEGs
+  all_genes <- unique(c(shared_genes, unique_genes_viral, unique_genes_recomb))
+  
+  # Get treatment names
+  treatments <- unlist(strsplit(pair_name, "_vs_"))
+  treatment_viral <- treatments[1]
+  treatment_recomb <- treatments[2]
+  
+  # Subset data for the treatments
+  viral_data <- res_viral[res_viral$treatment == treatment_viral & res_viral$ensembl_ID %in% all_genes, ]
+  recomb_data <- res_recomb[res_recomb$treatment == treatment_recomb & res_recomb$ensembl_ID %in% all_genes, ]
+  
+  # Merge log2FoldChange data
+  merged_data <- merge(
+    viral_data[, c("ensembl_ID", "log2FoldChange")],
+    recomb_data[, c("ensembl_ID", "log2FoldChange")],
+    by = "ensembl_ID",
+    all = TRUE,
+    suffixes = c("_Viral", "_Recomb")
+  )
+  
+  # Set row names to gene identifiers
+  rownames(merged_data) <- merged_data$ensembl_ID
+  merged_data <- merged_data[, -1]
+  
+  # Fill missing values with zeros
+  merged_data[is.na(merged_data)] <- 0
+  
+  max_abs <- max(abs(merged_data))
+  
+  pheatmap(
+    merged_data,
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = FALSE,
+    scale = "none",
+    main = paste("Heatmap for", pair_name),
+    fontsize = 10,
+    color = colorRampPalette(c("blue", "white", "red"))(50),
+    breaks = seq(-max_abs, max_abs, length.out = 51)
+  )
+}
+res_recomb %>% dplyr::count(treatment )
+  
+
+# Example for a specific treatment pair
+p1 <- prepare_heatmap_data(pair_name = "IL2_vs_IL2recomb", results, res_viral, res_recomb)
+p2 <- prepare_heatmap_data(pair_name = "IFNG_vs_IFNGrecomb", results, res_viral, res_recomb)
+p3 <- prepare_heatmap_data(pair_name = "IL12_vs_IL12recomb", results, res_viral, res_recomb)
+p4 <- prepare_heatmap_data(pair_name = "IL4_vs_IL4recomb", results, res_viral, res_recomb)
+p5 <- prepare_heatmap_data(pair_name = "IL6_vs_IL6recomb", results, res_viral, res_recomb)
+```
+
+
+### Scatterplot of L2FC in viral vs recombinant conditons
+
+```{r}
+
+plot_scatter_log2FC <- function(pair_name, res_viral, res_recomb, point_color = "blue") {
+  # Extract the treatment pair names
+  treatments <- unlist(strsplit(pair_name, "_vs_"))
+  treatment_viral <- treatments[1]
+  treatment_recomb <- treatments[2]
+  
+  # Subset data for the treatments
+  viral_data <- res_viral[res_viral$treatment == treatment_viral, ]
+  recomb_data <- res_recomb[res_recomb$treatment == treatment_recomb, ]
+  
+  # Merge data on ensembl_ID
+  merged_data <- merge(
+    viral_data[, c("ensembl_ID", "log2FoldChange", "padj", "gene")],
+    recomb_data[, c("ensembl_ID", "log2FoldChange", "padj", "gene")],
+    by = "ensembl_ID",
+    suffixes = c("_Viral", "_Recomb")
+  )
+  
+  # Plot scatterplot
+  library(ggplot2)
+  ggplot(merged_data, aes(x = log2FoldChange_Viral, y = log2FoldChange_Recomb)) +
+    geom_point(alpha = 0.6, color = point_color) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+    labs(
+      title = paste("Scatterplot of log2FoldChange:", treatment_viral, "vs", treatment_recomb),
+      x = paste("log2FoldChange in", treatment_viral),
+      y = paste("log2FoldChange in", treatment_recomb)) +
+    geom_text_repel(
+    data = merged_data %>% filter(padj_Viral < 0. | padj_Recomb < 0.05),
+    aes(label = gene_Viral), show.legend = F,
+    size = 3,
+    max.overlaps = 20) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      axis.title = element_text(size = 12)
+    )
+}
+
+# Example usage
+plot_scatter_log2FC("IL6_vs_IL6recomb", res_viral, res_recomb, point_color = dark2_pal[1])
+plot_scatter_log2FC("IFNG_vs_IFNGrecomb", res_viral, res_recomb, point_color = dark2_pal[2])
+plot_scatter_log2FC("IL12_vs_IL12recomb", res_viral, res_recomb, point_color = dark2_pal[3])
+plot_scatter_log2FC("IL2_vs_IL2recomb", res_viral, res_recomb, point_color = dark2_pal[4])
+plot_scatter_log2FC("IL4_vs_IL4recomb", res_viral, res_recomb, point_color = dark2_pal[5])
+```
+
+Note: labeled points have a padj of .05 in either the viral or recombinant condition.
+
+### Comparing sequencing depth
+
+#### Scatterplots
+```{r}
+library(dplyr)
+library(stringr)
+
+# Function to calculate row-wise means based on treatment groups
+rowwise_means <- function(dataset, treatment_groups) {
+  # Initialize an empty dataframe to store the results
+  result <- data.frame(row.names = rownames(dataset))
+  
+  # Loop over each treatment in treatment_groups
+  for (treatment in treatment_groups) {
+    # Select columns matching the current treatment
+    matching_cols <- dataset %>%
+      select(starts_with(treatment))
+    
+    # Calculate row-wise means for these columns
+    row_means <- rowMeans(matching_cols, na.rm = TRUE)
+    
+    # Add the row means as a new column in the result dataframe
+    result[[treatment]] <- row_means
+  }
+  
+  return(result)
+}
+
+normCounts_rows <-normCounts %>% column_to_rownames("ensembl_ID")
+normCounts_AVG <- rowwise_means(normCounts_rows, c("IL6", "IL6recomb", "IFNG", "IFNGrecomb", "IL12", "IL12recomb", "IL4", "IL4recomb", "IL2", "IL2recomb"))
+head(normCounts_AVG)
+
+```
+
+```{r, fig.width = 9, fig.height=6}
+plot_sequencing_depth_all <- function(normCounts_AVG, dark2_pal) {
+  library(ggplot2)
+  
+  # Identify ligand pairs
+  ligand_pairs <- colnames(normCounts_AVG)
+  recombinant_ligands <- ligand_pairs[grepl("recomb", ligand_pairs)]
+  viral_ligands <- gsub("recomb", "", recombinant_ligands) # Extract matching viral ligands
+  
+  # Iterate through each ligand pair
+  for (i in seq_along(recombinant_ligands)) {
+    recomb_ligand <- recombinant_ligands[i]
+    viral_ligand <- viral_ligands[i]
+    
+    # Prepare data for plotting
+    data <- data.frame(
+      Viral = log10(normCounts_AVG[[viral_ligand]] + 1),
+      Recombinant = log10(normCounts_AVG[[recomb_ligand]] + 1),
+      Gene = rownames(normCounts_AVG)
+    )
+    
+    # Create scatterplot
+    p <- ggplot(data, aes(x = Viral, y = Recombinant)) +
+      geom_point(alpha = 0.6, color = dark2_pal[i]) +  # Use dark2 palette for color
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+      labs(
+        title = paste("Sequencing Depth: Viral (", viral_ligand, ") vs Recombinant (", recomb_ligand, ")"),
+        x = paste("log10(Normalized Counts + 1): Viral (", viral_ligand, ")"),
+        y = paste("log10(Normalized Counts + 1): Recombinant (", recomb_ligand, ")")
+      ) +
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.title = element_text(size = 12)
+      )
+    
+    # Save the plot as an object with a unique name in the environment
+    assign(paste0("p", i), p, envir = .GlobalEnv)
+  }
+}
+
+# Generate scatterplots for all ligand pairs using log scaling and dark2 palette
+plot_sequencing_depth_all(normCounts_AVG, dark2_pal)
+
+# Print saved plots
+for (i in 1:length(grep("recomb", colnames(normCounts_AVG)))) {
+  print(get(paste0("p", i)))
+}
+```
+
+#### MA plots
+
+```{r, fig.width = 9, fig.height=6}
+plot_difference <- function(normCounts_AVG, dark2_pal) {
+  library(ggplot2)
+  
+  # Identify ligand pairs
+  ligand_pairs <- colnames(normCounts_AVG)
+  recombinant_ligands <- ligand_pairs[grepl("recomb", ligand_pairs)]
+  viral_ligands <- gsub("recomb", "", recombinant_ligands) # Extract matching viral ligands
+  
+  for (i in seq_along(recombinant_ligands)) {
+    recomb_ligand <- recombinant_ligands[i]
+    viral_ligand <- viral_ligands[i]
+    
+    # Prepare data for plotting
+    data <- data.frame(
+      Average = (log10(normCounts_AVG[[recomb_ligand]] + 1) + log10(normCounts_AVG[[viral_ligand]] + 1)) / 2,
+      Difference = log10(normCounts_AVG[[recomb_ligand]] + 1) - log10(normCounts_AVG[[viral_ligand]] + 1),
+      Gene = rownames(normCounts_AVG)
+    )
+    
+    # Create difference plot
+    p <- ggplot(data, aes(x = Average, y = Difference)) +
+      geom_point(alpha = 0.6, color = dark2_pal[i]) +
+      geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+      labs(
+        title = paste("Difference Plot: Viral vs Recombinant (", viral_ligand, ")"),
+        x = "Average log10(Normalized Counts + 1)",
+        y = "log10normCounts (Recombinant - Viral)"
+      ) +
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.title = element_text(size = 12)
+      )
+    
+    # Save the plot as an object with a unique name in the environment
+    assign(paste0("diff_p", i), p, envir = .GlobalEnv)
+  }
+}
+
+# Generate difference plots
+plot_difference(normCounts_AVG, dark2_pal)
+
+# Print saved plots
+for (i in 1:length(grep("recomb", colnames(normCounts_AVG)))) {
+  print(get(paste0("diff_p", i)))
+}
+```
+
+### Comparing top L2FC Genes across viral and recomb
+
+```{r, fig.width = 9, fig.height=6}
+# Define function to extract top N genes by absolute L2FC
+get_top_genes <- function(data, n = 200) {
+  data %>%
+    arrange(desc(abs(log2FoldChange))) %>%  # Rank by absolute L2FC
+    slice_head(n = n) %>%                   # Select top N genes
+    pull(ensembl_ID)                        # Extract gene IDs
+}
+
+# Create a list of ligand pairs
+ligand_pairs <- c("IL2", "IL6", "IFNG", "IL12", "IL4")
+
+# Create empty list to store results
+top_genes_viral_list <- list()
+top_genes_recomb_list <- list()
+
+# Loop through ligand pairs and extract top genes
+for (ligand in ligand_pairs) {
+  # Extract top genes for the viral and recombinant conditions
+  viral_condition <- paste0(ligand)
+  recomb_condition <- paste0(ligand, "recomb")
+  
+  top_genes_viral_list[[ligand]] <- get_top_genes(res_viral %>% filter(treatment == viral_condition))
+  top_genes_recomb_list[[ligand]] <- get_top_genes(res_recomb %>% filter(treatment == recomb_condition))
+}
+
+library(ggplot2)
+
+# Define function to create scatter plot for each ligand pair
+create_scatter_plot <- function(viral_genes, recomb_genes, viral_data, recomb_data, ligand_pair) {
+  # Merge the viral and recombinant data based on gene IDs
+  merged_data <- merge(viral_data, recomb_data, by = "ensembl_ID", suffixes = c("_viral", "_recomb"))
+  
+  # Add a column for "Shared" vs "Not Shared"
+  merged_data$Top <- ifelse(merged_data$ensembl_ID %in% viral_genes & merged_data$ensembl_ID %in% recomb_genes, "Shared", "Not Shared")
+  
+  # Create scatter plot
+  plot <- ggplot(merged_data, aes(x = log2FoldChange_viral, y = log2FoldChange_recomb, color = Top)) +
+    geom_point(alpha = 0.6) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    scale_color_manual(values = c("Shared" = "red", "Not Shared" = "gray")) +
+    labs(
+      title = paste("Log2 Fold Change Comparison: Viral vs Recombinant", ligand_pair),
+      x = "Log2 Fold Change (Viral)",
+      y = "Log2 Fold Change (Recombinant)"
+    ) +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  return(plot)
+}
+
+# Generate plots for each ligand pair
+plot_list <- list()
+
+for (ligand in ligand_pairs) {
+  # Extract top genes for viral and recombinant conditions
+  viral_genes <- top_genes_viral_list[[ligand]]
+  recomb_genes <- top_genes_recomb_list[[ligand]]
+  
+  # Extract the corresponding data for plotting
+  viral_data <- res_viral %>% filter(treatment == paste0(ligand)) %>% select(ensembl_ID, log2FoldChange)
+  recomb_data <- res_recomb %>% filter(treatment == paste0(ligand, "recomb")) %>% select(ensembl_ID, log2FoldChange)
+  
+  # Create scatter plot and save to plot list
+  plot_list[[ligand]] <- create_scatter_plot(viral_genes, recomb_genes, viral_data, recomb_data, ligand)
+}
+
+# Print all plots
+for (ligand in ligand_pairs) {
+  print(plot_list[[ligand]])
 }
 ```
 
