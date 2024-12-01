@@ -11,11 +11,15 @@ Screen single ligands and identifiy candidates for combinatorial studies in acti
 **Sequencing**: RNA-seq libraries were prepared using BRB-seq with no normalization of RNA quantity. RNA-seq libraries were processed in 4 separate plates.
 
 ### <ins>Analysis<ins>
-#### 1. Identify robust clusters of ligand-driven transcriptional phenotypes.
+#### <ins>Identify robust clusters of ligand-driven transcriptional phenotypes.<ins>
 Ultimately, the goal of this experiment is to identify single ligands that would be appropriate to use in combinatorial studies. It would be valuable to identify groups of ligands that have shared transcriptional programs and to examine overlap between these clusters. It would also be interesting to examine how these clusters correspond to receptor identity and known biological functions.
 ##### Files:
 
-#### 2. Identify covariates driving variation between groups.
+#### <ins>Decompose transcriptional phenotypes<ins>
+Ideally, we can decompose the transcriptional signatures in some manner to identify co-regulated gene modules that are biologically interpretable. I guess this would fall into the class of "factor analysis" although a lot of those tools are developed for scRNA-seq and I'm not sure how well they work on the more limited sample size of bulk RNA-seq.
+* **PCA**: Perhaps we can just use the principal components since by definition they represent orthogonal groups of genes. Need to focus on "coherent" PCs as some of these will capture variation due to technical factors. Will probably need to filter on HVGs too.
+
+#### <ins>Identify covariates driving variation between groups.<ins>
 There seems to consistently be some type of batch effect driving divergence of linker-only samples and variation in ligand-treated samples with weaker perturbation effects. For ligands with strong perturbations, I think the strength of transcriptonal changes masks these group to group variation. I can imagine a number of potential reasons for this.
 * **sequencing depth (can be fixed)**
   * Because of the nature of BRB-seq, because I didn't do any RNA normalization prior to input into the library given the equal cell numbers in each well, and because the different library pools weren't sequenced equally there's some level of variability in the sequencing depth across given plates and samples. This can be seen in **/processing/count_matrix_generation.Rmd**.
@@ -24,11 +28,11 @@ There seems to consistently be some type of batch effect driving divergence of l
 
 ##### Files:  
 
-#### 3. Examine believability of "type 1" signature across diverse ligands.
+#### <ins>Examine believability of "type 1" signature across diverse ligands.<ins>
 
 ##### Files:  
 
-#### 4. Compare concordance between recombinant protein and viral ligand stimulation.
+#### <ins>Compare concordance between recombinant protein and viral ligand stimulation.<ins>
 
 ##### Files:
 
