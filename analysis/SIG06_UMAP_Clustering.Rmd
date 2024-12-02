@@ -261,86 +261,37 @@ colData(dds_null)$shape_group <- ifelse(colData(dds_null)$treatment == "linker",
 
 ```{r}
 # Extract PCA data from DESeq2 plotPCA
-pca_data <- DESeq2::plotPCA(dds_null, intgroup = c("treatment", "plate", "replicate"), pcsToUse = 1:8, ntop = 500, returnData = TRUE)
-
-# pca_data <- pca_data %>%
-#   mutate(
-#     well_row = gsub("[0-9]", "", well),    # Extract letters (row identifiers)
-#     well_column = as.factor(gsub("[A-Za-z]", "", well)) # Extract numbers (column identifiers)
-#   )
-
-# Ensure PCA scores are numeric
-pca_data$PC1 <- as.numeric(pca_data$PC1)
-pca_data$PC2 <- as.numeric(pca_data$PC2)
-pca_data$PC3 <- as.numeric(pca_data$PC3)
-pca_data$PC4 <- as.numeric(pca_data$PC4)
-pca_data$PC5 <- as.numeric(pca_data$PC5)
-pca_data$PC6 <- as.numeric(pca_data$PC6)
-pca_data$PC7 <- as.numeric(pca_data$PC7)
-pca_data$PC8 <- as.numeric(pca_data$PC8)
+pca_data1 <- DESeq2::plotPCA(dds_null, intgroup = c("treatment", "plate", "replicate"), pcsToUse = 1:2, ntop = 500, returnData = TRUE)
+pca_data2 <- DESeq2::plotPCA(dds_null, intgroup = c("treatment", "plate", "replicate"), pcsToUse = 3:4, ntop = 500, returnData = TRUE)
+pca_data3 <- DESeq2::plotPCA(dds_null, intgroup = c("treatment", "plate", "replicate"), pcsToUse = 5:6, ntop = 500, returnData = TRUE)
+pca_data4 <- DESeq2::plotPCA(dds_null, intgroup = c("treatment", "plate", "replicate"), pcsToUse = 7:8, ntop = 500, returnData = TRUE)
 
 
-fit1 <- lm(PC1 ~ plate + replicate, data = pca_data)
+fit1 <- lm(PC1 ~ plate + replicate, data = pca_data1)
 summary(fit1)
 
-fit2 <- lm(PC2 ~ plate + replicate, data = pca_data)
+fit2 <- lm(PC2 ~ plate + replicate, data = pca_data1)
 summary(fit2)
 
-fit3 <- lm(PC3 ~ plate + replicate, data = pca_data)
+fit3 <- lm(PC3 ~ plate + replicate, data = pca_data2)
 summary(fit3)
 
-fit4 <- lm(PC4 ~ plate + replicate, data = pca_data)
+fit4 <- lm(PC4 ~ plate + replicate, data = pca_data2)
 summary(fit4)
 
-fit5 <- lm(PC5 ~ plate + replicate, data = pca_data)
+fit5 <- lm(PC5 ~ plate + replicate, data = pca_data3)
 summary(fit5)
 
-fit6 <- lm(PC6 ~ plate + replicate, data = pca_data)
+fit6 <- lm(PC6 ~ plate + replicate, data = pca_data3)
 summary(fit6)
 
-fit7 <- lm(PC7 ~ plate + replicate, data = pca_data)
+fit7 <- lm(PC7 ~ plate + replicate, data = pca_data4)
 summary(fit7)
 
-fit8 <- lm(PC8 ~ plate + replicate, data = pca_data)
+fit8 <- lm(PC8 ~ plate + replicate, data = pca_data4)
 summary(fit8)
-
-pca_data %>% select(well, treatment) %>% unique(
-)
-
-library(dplyr)
-
-# Add well_row and well_column to the PCA data
-pca_data <- DESeq2::plotPCA(dds_null, intgroup = c("plate", "replicate"), pcsToUse = 1:8, ntop = 500) # Extract numbers (column identifiers)
-
-# Perform linear regression for each PC
-lm_results <- lapply(paste0("PC", 1:8), function(pc) {
-  formula <- as.formula(paste(pc, "~ plate + replicate"))
-  lm(formula, data = pca_data)
-})
-
-# Summarize results
-lm_summaries <- lapply(lm_results, summary)
-
-# Output a specific PC's regression summary, e.g., PC3
-lm_summaries[[1]] # Adjust the index for a specific PC
 ```
 
-
-```{r}
-pca_res <- prcomp(assay(dds_null))
-
-null_res_viral <- res_viral %>% filter(treatment %in% non_DEG_treatment)
-
-cols <- c("treatment", "plate", "replicate", "well_row", "well_column")
-
-lm_df <- umap_plot_df_well_rowcol %>% mutate(log_nCount_RNA = log10(nCount_RNA)) %>% filter(treatment %in% non_DEG_treatment) %>%  mutate_at(cols, factor)
-
-lm <- lm(log_nCount_RNA ~ treatment + plate + replicate + well_row + well_column, data = pca_res)
-
-summary(lm)
-
-# pca analysis with every well independently, use regression to figure out which regression factors are driving the PCs, including log_ncount_rna as independent.
-```
 
 ### Plot PCs of Null Genes
 
