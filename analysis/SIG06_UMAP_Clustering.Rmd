@@ -384,7 +384,7 @@ p4 <- plot_rep_pca(pcs = 7:8)
 
 # Arrange plots into a grid
 (p1 + p2) / (p3 + p4)
-
+# look at pc loadings, see which genes are dribing most of the pc
 ```
 
 #### nCount_RNA
@@ -531,4 +531,4 @@ p4 <- plot_col_pca(pcs = 7:8)
 (p1 + p2) / (p3 + p4)
 ```
 
-
+# what genes make up the pcs that were correlated with plate and replicate variation
