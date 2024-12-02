@@ -137,9 +137,11 @@ umap_plot_df_well_rowcol <- umap_plot_df %>%
 ```{r, fig.height=10, fig.width=12}
 library(ggrepel)
 library(patchwork)
+library(ggrepel)
 
 p1 <- ggplot(umap_plot_df, aes(x = X1, y = X2, color = replicate)) +
   geom_point(shape = 15) + 
+  ggrepel::geom_text_repel(data = umap_plot_df) +
   labs(title="UMAP by Group")
 
 p2 <- ggplot(umap_plot_df, aes(x = X1, y = X2, color = plate)) +
@@ -189,9 +191,15 @@ ggdendrogram(hc_meta, rotate=TRUE)
 
 ```
 
+#### Questions from this plot:
+
+why is CXCL13_group2 basal from the rest of the plot?
+
 ### Overlay Clustering on UMAP
 
 ```{r}
+#look for ligands that have one/no differentially expressed genes
+
 dark2_pal <- brewer.pal(8, "Dark2")
 
 # Define the number of clusters
@@ -231,8 +239,345 @@ ggplot(umap_cluster, aes(x = X1, y = X2, color = cluster_meta)) +
 ```{r}
 # Non DE Genes
 
-null_genes <- res_viral %>% filter(padj > 0.2) %>% pull(ensembl_ID)
+dds_null <- dds_norm[null_genes, ]
 
-dds_norm[null_genes, ]
+#take the ligands that dont have differentially expressed genes and use those ligands to find principal components
+
+non_DEG_treatment <- res_viral %>% filter(padj < 0.1) %>% group_by(treatment) %>% summarize(DEG_count = n() < 10) %>% arrange(desc(DEG_count)) %>% filter(DEG_count == TRUE) %>% pull(treatment)
+
+filtered_coldata <- colData(dds_norm) %>%
+  as.data.frame() %>%
+  filter(treatment %in% non_DEG_treatment | treatment == "linker" )
+
+dds_null <- dds_norm[, rownames(filtered_coldata)]
+
+colData(dds_null)$shape_group <- ifelse(colData(dds_null)$treatment == "linker", "linker", "non_linker")
+
+# Just use the linkers and try pca on those
 ```
+
+
+### linear regression
+
+```{r}
+# Extract PCA data from DESeq2 plotPCA
+pca_data <- DESeq2::plotPCA(dds_null, intgroup = c("treatment", "plate", "replicate"), pcsToUse = 1:8, ntop = 500, returnData = TRUE)
+
+# pca_data <- pca_data %>%
+#   mutate(
+#     well_row = gsub("[0-9]", "", well),    # Extract letters (row identifiers)
+#     well_column = as.factor(gsub("[A-Za-z]", "", well)) # Extract numbers (column identifiers)
+#   )
+
+# Ensure PCA scores are numeric
+pca_data$PC1 <- as.numeric(pca_data$PC1)
+pca_data$PC2 <- as.numeric(pca_data$PC2)
+pca_data$PC3 <- as.numeric(pca_data$PC3)
+pca_data$PC4 <- as.numeric(pca_data$PC4)
+pca_data$PC5 <- as.numeric(pca_data$PC5)
+pca_data$PC6 <- as.numeric(pca_data$PC6)
+pca_data$PC7 <- as.numeric(pca_data$PC7)
+pca_data$PC8 <- as.numeric(pca_data$PC8)
+
+
+fit1 <- lm(PC1 ~ plate + replicate, data = pca_data)
+summary(fit1)
+
+fit2 <- lm(PC2 ~ plate + replicate, data = pca_data)
+summary(fit2)
+
+fit3 <- lm(PC3 ~ plate + replicate, data = pca_data)
+summary(fit3)
+
+fit4 <- lm(PC4 ~ plate + replicate, data = pca_data)
+summary(fit4)
+
+fit5 <- lm(PC5 ~ plate + replicate, data = pca_data)
+summary(fit5)
+
+fit6 <- lm(PC6 ~ plate + replicate, data = pca_data)
+summary(fit6)
+
+fit7 <- lm(PC7 ~ plate + replicate, data = pca_data)
+summary(fit7)
+
+fit8 <- lm(PC8 ~ plate + replicate, data = pca_data)
+summary(fit8)
+
+pca_data %>% select(well, treatment) %>% unique(
+)
+
+library(dplyr)
+
+# Add well_row and well_column to the PCA data
+pca_data <- DESeq2::plotPCA(dds_null, intgroup = c("plate", "replicate"), pcsToUse = 1:8, ntop = 500) # Extract numbers (column identifiers)
+
+# Perform linear regression for each PC
+lm_results <- lapply(paste0("PC", 1:8), function(pc) {
+  formula <- as.formula(paste(pc, "~ plate + replicate"))
+  lm(formula, data = pca_data)
+})
+
+# Summarize results
+lm_summaries <- lapply(lm_results, summary)
+
+# Output a specific PC's regression summary, e.g., PC3
+lm_summaries[[1]] # Adjust the index for a specific PC
+```
+
+
+```{r}
+pca_res <- prcomp(assay(dds_null))
+
+null_res_viral <- res_viral %>% filter(treatment %in% non_DEG_treatment)
+
+cols <- c("treatment", "plate", "replicate", "well_row", "well_column")
+
+lm_df <- umap_plot_df_well_rowcol %>% mutate(log_nCount_RNA = log10(nCount_RNA)) %>% filter(treatment %in% non_DEG_treatment) %>%  mutate_at(cols, factor)
+
+lm <- lm(log_nCount_RNA ~ treatment + plate + replicate + well_row + well_column, data = pca_res)
+
+summary(lm)
+
+# pca analysis with every well independently, use regression to figure out which regression factors are driving the PCs, including log_ncount_rna as independent.
+```
+
+### Plot PCs of Null Genes
+
+#### Plate
+
+```{r, fig.height=15, fig.width=18}
+plot_plate_pca <- function(pcs){
+pca_data <- DESeq2::plotPCA(
+  dds_null, 
+  intgroup = c("plate", "shape_group"), 
+  ntop = 500, 
+  pcsToUse = pcs,
+  returnData = TRUE
+)
+
+# Extract percent variance for PC1 and PC2
+percentVar <- round(100 * attr(pca_data, "percentVar"), 1)
+
+# Plot using ggplot2
+library(ggplot2)
+ggplot(pca_data,  aes(x = !!sym(paste0("PC", pcs[1])), y = !!sym(paste0("PC", pcs[2])))) +
+  geom_point(
+    aes(color = plate, shape = shape_group),
+    size = 3
+  ) +
+  scale_color_brewer(palette = "Dark2") + # Use the specified color palette
+  scale_shape_manual(values = c("linker" = 17, "non_linker" = 16)) + # Shapes for linker/non-linker
+  theme(aspect.ratio = 1) +
+  labs(
+    title = "PCA Plot by Plate and Linker Status",
+    x = paste0("PC", pcs[1], ": ", percentVar[1], "% variance"),
+    y = paste0("PC", pcs[2], ": ", percentVar[2], "% variance"),
+    color = "Plate",
+    shape = "Linker Status"
+  )
+}
+
+p1 <- plot_plate_pca(pcs = 1:2)
+p2 <- plot_plate_pca(pcs = 3:4)
+p3 <- plot_plate_pca(pcs = 5:6)
+p4 <- plot_plate_pca(pcs = 7:8)
+
+
+# Arrange plots into a grid
+(p1 + p2) / (p3 + p4)
+
+```
+
+looks like some grouping by plate across pc2 and pc3
+
+#### Replicate
+
+```{r, fig.height=15, fig.width=18}
+plot_rep_pca <- function(pcs){
+pca_data <- DESeq2::plotPCA(
+  dds_null, 
+  intgroup = c("replicate", "shape_group"), 
+  ntop = 500, 
+  pcsToUse = pcs,
+  returnData = TRUE
+)
+
+# Extract percent variance for PC1 and PC2
+percentVar <- round(100 * attr(pca_data, "percentVar"), 1)
+
+# Plot using ggplot2
+library(ggplot2)
+ggplot(pca_data,  aes(x = !!sym(paste0("PC", pcs[1])), y = !!sym(paste0("PC", pcs[2])))) +
+  geom_point(
+    aes(color = replicate, shape = shape_group),
+    size = 3
+  ) +
+  scale_color_brewer(palette = "Dark2") + # Use the specified color palette
+  scale_shape_manual(values = c("linker" = 17, "non_linker" = 16)) + # Shapes for linker/non-linker
+  theme(aspect.ratio = 1) +
+  labs(
+    title = "PCA Plot by Replicate and Linker Status",
+    x = paste0("PC", pcs[1], ": ", percentVar[1], "% variance"),
+    y = paste0("PC", pcs[2], ": ", percentVar[2], "% variance"),
+    color = "Replicate",
+    shape = "Linker Status"
+  )
+}
+
+p1 <- plot_rep_pca(pcs = 1:2)
+p2 <- plot_rep_pca(pcs = 3:4)
+p3 <- plot_rep_pca(pcs = 5:6)
+p4 <- plot_rep_pca(pcs = 7:8)
+
+
+# Arrange plots into a grid
+(p1 + p2) / (p3 + p4)
+
+```
+
+#### nCount_RNA
+
+```{r, fig.height=15, fig.width=18}
+plot_count_pca <- function(pcs){
+pca_data <- DESeq2::plotPCA(
+  dds_null, 
+  intgroup = c("nCount_RNA", "shape_group"), 
+  ntop = 500, 
+  pcsToUse = pcs,
+  returnData = TRUE
+)
+
+# Extract percent variance for PC1 and PC2
+percentVar <- round(100 * attr(pca_data, "percentVar"), 1)
+
+# Plot using ggplot2
+library(ggplot2)
+ggplot(pca_data,  aes(x = !!sym(paste0("PC", pcs[1])), y = !!sym(paste0("PC", pcs[2])))) +
+  geom_point(
+    aes(color = nCount_RNA, shape = shape_group),
+    size = 3
+  ) +
+  scale_color_viridis_c() + # Use the specified color palette
+  scale_shape_manual(values = c("linker" = 17, "non_linker" = 16)) + # Shapes for linker/non-linker
+  theme(aspect.ratio = 1) +
+  labs(
+    title = "PCA Plot by nCount_RNA and Linker Status",
+    x = paste0("PC", pcs[1], ": ", percentVar[1], "% variance"),
+    y = paste0("PC", pcs[2], ": ", percentVar[2], "% variance"),
+    color = "nCount_RNA",
+    shape = "Linker Status"
+  )
+}
+
+p1 <- plot_count_pca(pcs = 1:2)
+p2 <- plot_count_pca(pcs = 3:4)
+p3 <- plot_count_pca(pcs = 5:6)
+p4 <- plot_count_pca(pcs = 7:8)
+
+
+# Arrange plots into a grid
+(p1 + p2) / (p3 + p4)
+
+```
+
+### PCA of full data by well row and column
+
+#### Row
+
+```{r, fig.height=15, fig.width=18}
+colData(dds_norm)$shape_group <- ifelse(colData(dds_norm)$treatment == "linker", "linker", "non_linker")
+
+plot_row_pca <- function(pcs) {
+  # Add well_row to colData if not already present
+  colData(dds_norm)$well_row <- gsub("[0-9]", "", colData(dds_norm)$well)
+
+  # Extract PCA data with well_row as a grouping variable
+  pca_data <- DESeq2::plotPCA(
+    dds_norm, 
+    intgroup = c("well_row", "shape_group"), 
+    ntop = 500, 
+    pcsToUse = pcs,
+    returnData = TRUE
+  )
+
+  # Extract percent variance for the PCs
+  percentVar <- round(100 * attr(pca_data, "percentVar"), 1)
+
+  # Plot using ggplot2
+  ggplot(pca_data, aes(x = !!sym(paste0("PC", pcs[1])), y = !!sym(paste0("PC", pcs[2])))) +
+    geom_point(
+      aes(color = well_row, shape = shape_group),
+      size = 3
+    ) +
+    scale_color_brewer(palette = "Dark2") + # Use the specified color palette
+    scale_shape_manual(values = c("linker" = 17, "non_linker" = 16)) + # Shapes for linker/non-linker
+    theme(aspect.ratio = 1) +
+    labs(
+      title = "PCA Plot by Well Row and Linker Status",
+      x = paste0("PC", pcs[1], ": ", percentVar[1], "% variance"),
+      y = paste0("PC", pcs[2], ": ", percentVar[2], "% variance"),
+      color = "Well Row",
+      shape = "Linker Status"
+    )
+}
+
+# Generate PCA plots for different PC combinations
+p1 <- plot_row_pca(pcs = 1:2)
+p2 <- plot_row_pca(pcs = 3:4)
+p3 <- plot_row_pca(pcs = 5:6)
+p4 <- plot_row_pca(pcs = 7:8)
+
+# Arrange the plots into a grid
+(p1 + p2) / (p3 + p4)
+```
+
+
+#### Column
+
+```{r, fig.height=15, fig.width=18}
+plot_col_pca <- function(pcs) {
+  # Add well_column to colData if not already present
+  colData(dds_norm)$well_column <- gsub("[A-Za-z]", "", colData(dds_norm)$well)
+
+  # Extract PCA data with well_column as a grouping variable
+  pca_data <- DESeq2::plotPCA(
+    dds_norm, 
+    intgroup = c("well_column", "shape_group"), 
+    ntop = 500, 
+    pcsToUse = pcs,
+    returnData = TRUE
+  )
+
+  # Extract percent variance for the PCs
+  percentVar <- round(100 * attr(pca_data, "percentVar"), 1)
+
+  # Plot using ggplot2
+  ggplot(pca_data, aes(x = !!sym(paste0("PC", pcs[1])), y = !!sym(paste0("PC", pcs[2])))) +
+    geom_point(
+      aes(color = well_column, shape = shape_group),
+      size = 3
+    ) +
+    scale_color_brewer(palette = "Set3") + # Use a viridis color palette for numeric well columns
+    scale_shape_manual(values = c("linker" = 17, "non_linker" = 16)) + # Shapes for linker/non-linker
+    theme(aspect.ratio = 1) +
+    labs(
+      title = "PCA Plot by Well Column and Linker Status",
+      x = paste0("PC", pcs[1], ": ", percentVar[1], "% variance"),
+      y = paste0("PC", pcs[2], ": ", percentVar[2], "% variance"),
+      color = "Well Column",
+      shape = "Linker Status"
+    )
+}
+
+# Generate PCA plots for different PC combinations
+p1 <- plot_col_pca(pcs = 1:2)
+p2 <- plot_col_pca(pcs = 3:4)
+p3 <- plot_col_pca(pcs = 5:6)
+p4 <- plot_col_pca(pcs = 7:8)
+
+# Arrange the plots into a grid
+(p1 + p2) / (p3 + p4)
+```
+
 
