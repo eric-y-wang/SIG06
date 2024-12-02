@@ -452,6 +452,8 @@ for (i in 1:length(grep("recomb", colnames(normCounts_AVG)))) {
 }
 ```
 
+Across all conditions, there appears to be a general trend of higher L2FC values across genes in the viral conditions compared to the recombinant contitions. 
+
 ### Comparing top L2FC Genes across viral and recomb
 
 ```{r, fig.width = 9, fig.height=6}
@@ -526,4 +528,20 @@ for (ligand in ligand_pairs) {
   print(plot_list[[ligand]])
 }
 ```
+
+Analysis:
+
+IL2: Viral and recombinant have comparable values for L2FC, also most of the genes with the highest L2FC are conserved in both; linear relationship.
+
+IL6: Although some of the genes that are highly up-regulated in both conditions are conserved, few genes in the recombinant condition exhibit a significant L2FC, and most are around zero. this is evident as most points that are colored red (corresponding to being one of the top 200 genes by L2FC in both conditions) have near zero L2FC in the recombinant condition. There was also a high number of genes with near zero L2FC in the viral condition, but this number appeared much smaller than that of the recombinant. 
+
+IFNG: Most of the highest L2FC genes are conserved between the 2 conditions. Most significant genes are up-regulated. There is also some clustering around zero in both conditions, but moreso in the recombinant condition compared to the viral condition
+
+IL12: There doesn't appear to be a clear linear relationship between the recombinant and viral L2FC for IL12. Overall, there does appear to be higher L2FC in the viral condition compared to the recombinant, however the scale of these changes is small. Only a handful of the highest L2FC genes are shared between the 2 conditions. 
+
+IL4: Viral and recombinant have comparable values for L2FC, also most of the genes with the highest L2FC are conserved in both; linear relationship.
+
+Overall: Different viral ligands and their corresponding recombinant counterparts show varying levels of concordance both overall and among the top L2FC genes. IL2 and IL4 exibited the most linear relationships and high conservation of highly differentially expressed genes across the 2 conditions.
+
+
 
