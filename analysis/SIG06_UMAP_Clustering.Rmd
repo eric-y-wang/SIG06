@@ -399,6 +399,9 @@ pca_data <- DESeq2::plotPCA(
   returnData = TRUE
 )
 
+pca_data <- pca_data %>%
+    mutate(log10_nCount_RNA = log10(nCount_RNA))
+
 # Extract percent variance for PC1 and PC2
 percentVar <- round(100 * attr(pca_data, "percentVar"), 1)
 
@@ -413,10 +416,10 @@ ggplot(pca_data,  aes(x = !!sym(paste0("PC", pcs[1])), y = !!sym(paste0("PC", pc
   scale_shape_manual(values = c("linker" = 17, "non_linker" = 16)) + # Shapes for linker/non-linker
   theme(aspect.ratio = 1) +
   labs(
-    title = "PCA Plot by nCount_RNA and Linker Status",
+    title = "PCA Plot by log10 nCount_RNA and Linker Status",
     x = paste0("PC", pcs[1], ": ", percentVar[1], "% variance"),
     y = paste0("PC", pcs[2], ": ", percentVar[2], "% variance"),
-    color = "nCount_RNA",
+    color = "log10(nCount_RNA)",
     shape = "Linker Status"
   )
 }
@@ -532,3 +535,72 @@ p4 <- plot_col_pca(pcs = 7:8)
 ```
 
 # what genes make up the pcs that were correlated with plate and replicate variation
+
+### Genes Driving PCs
+
+```{r}
+# Extract normalized counts or variance-stabilized data
+vsd_data <- assay(dds_null)  # Use DESeq2's variance-stabilizing transformation
+
+# Perform PCA
+pca_res <- prcomp(t(vsd_data))  # Transpose so samples are rows and genes are columns
+```
+
+#### Extract loadings
+
+```{r, fig.height = 8, fig.width = 10}
+get_pc_genes <- function(pc) {
+  # Extract loadings
+  loadings <- pca_res$rotation  # Genes x PCs
+  
+  # Get top 10 positive and top 10 negative loadings
+  pc_top_genes_pos <- loadings[, pc] %>%
+    sort(decreasing = TRUE) %>%
+    head(20)
+  
+  pc_top_genes_neg <- loadings[, pc] %>%
+    sort(decreasing = FALSE) %>%
+    head(20)
+  
+  # Combine positive and negative loadings
+  pc_top_genes <- c(pc_top_genes_pos, pc_top_genes_neg)
+  
+  # Create a data frame for the top genes
+  top_genes_df <- data.frame(
+    ensembl_ID = names(pc_top_genes),
+    Loading = pc_top_genes
+  )
+  
+  # Map Ensembl IDs to gene names using featureNames
+  top_genes_named <- top_genes_df %>%
+    left_join(featureNames, by = "ensembl_ID")
+  
+  # Add a column for the loading type (Positive/Negative)
+  top_genes_named <- top_genes_named %>%
+    mutate(LoadingType = ifelse(Loading > 0, "Positive", "Negative"))
+  
+  # Bar plot with gene names, color-coded by loading type
+  ggplot(top_genes_named, aes(x = reorder(gene, Loading), y = Loading, fill = LoadingType)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    scale_fill_manual(values = c("Positive" = "steelblue", "Negative" = "darkred")) +
+    labs(
+      title = paste0("Top 20 Positive and Negative Genes Driving ", pc),
+      x = "Gene",
+      y = "Loading",
+      fill = "Loading Type"
+    ) +
+    theme_minimal()
+}
+
+# Generate plots for multiple PCs
+get_pc_genes(pc = "PC1")
+get_pc_genes(pc = "PC2")
+get_pc_genes(pc = "PC3")
+get_pc_genes(pc = "PC4")
+get_pc_genes(pc = "PC5")
+get_pc_genes(pc = "PC6")
+get_pc_genes(pc = "PC7")
+get_pc_genes(pc = "PC8")
+```
+
