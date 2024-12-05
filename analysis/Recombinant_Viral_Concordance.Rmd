@@ -55,8 +55,6 @@ data <- data[,rownames(metaDF)]
 
 ```{r}
 normCounts <- read.csv("../analysis_outs/counts_norm_DEseq2.csv")
-
-dds_norm <- vst(dds)
 ```
 
 #### Create DESeq object
@@ -64,6 +62,9 @@ dds_norm <- vst(dds)
 ```{r}
 # import dds object
 dds <- readRDS("/Users/izumpano/Desktop/Eric Analyses/SIG06/analysis_outs/dds_object_SIG06.rds")
+
+
+dds_norm <- vst(dds)
 ```
 
 #### Create Treatment Groups 
