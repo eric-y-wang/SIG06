@@ -1,53 +1,308 @@
----
-title: "Factor Analysis"
-author: "Ian Zumpano"
-date: "`r Sys.Date()`"
-output:
-  github_document:
-    toc: true
-    html_preview: false
-  html_notebook:
-    toc: true
-    toc_float: true
----
+Factor Analysis
+================
+Ian Zumpano
+2024-12-06
 
-```{r setup}
+- [<u>Import Data</u>](#import-data)
+- [<u>Normalization and Diagnostic
+  Plots</u>](#normalization-and-diagnostic-plots)
+- [Filter only highly variable
+  genes](#filter-only-highly-variable-genes)
+- [PCA](#pca)
+- [Gene set enrichment analysis](#gene-set-enrichment-analysis)
+- [Sparce PCA](#sparce-pca)
+- [Fit LM for each PC](#fit-lm-for-each-pc)
+- [for each pc, make boxplot of pc
+  component](#for-each-pc-make-boxplot-of-pc-component)
+- [try with different numbers of genes per
+  component](#try-with-different-numbers-of-genes-per-component)
+  - [Extract PC loadings and save to
+    csv](#extract-pc-loadings-and-save-to-csv)
+
+``` r
 library(tidyverse)
+```
+
+    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+    ## ✔ dplyr     1.1.4     ✔ readr     2.1.5
+    ## ✔ forcats   1.0.0     ✔ stringr   1.5.1
+    ## ✔ ggplot2   3.5.1     ✔ tibble    3.2.1
+    ## ✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+    ## ✔ purrr     1.0.2     
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+    ## ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+
+``` r
 library(ggplot2)
 library(cowplot)
+```
+
+    ## 
+    ## Attaching package: 'cowplot'
+    ## 
+    ## The following object is masked from 'package:lubridate':
+    ## 
+    ##     stamp
+
+``` r
 library(patchwork)
+```
+
+    ## 
+    ## Attaching package: 'patchwork'
+    ## 
+    ## The following object is masked from 'package:cowplot':
+    ## 
+    ##     align_plots
+
+``` r
 library(DESeq2)
+```
+
+    ## Loading required package: S4Vectors
+    ## Loading required package: stats4
+    ## Loading required package: BiocGenerics
+    ## 
+    ## Attaching package: 'BiocGenerics'
+    ## 
+    ## The following objects are masked from 'package:lubridate':
+    ## 
+    ##     intersect, setdiff, union
+    ## 
+    ## The following objects are masked from 'package:dplyr':
+    ## 
+    ##     combine, intersect, setdiff, union
+    ## 
+    ## The following objects are masked from 'package:stats':
+    ## 
+    ##     IQR, mad, sd, var, xtabs
+    ## 
+    ## The following objects are masked from 'package:base':
+    ## 
+    ##     anyDuplicated, aperm, append, as.data.frame, basename, cbind,
+    ##     colnames, dirname, do.call, duplicated, eval, evalq, Filter, Find,
+    ##     get, grep, grepl, intersect, is.unsorted, lapply, Map, mapply,
+    ##     match, mget, order, paste, pmax, pmax.int, pmin, pmin.int,
+    ##     Position, rank, rbind, Reduce, rownames, sapply, setdiff, table,
+    ##     tapply, union, unique, unsplit, which.max, which.min
+    ## 
+    ## 
+    ## Attaching package: 'S4Vectors'
+    ## 
+    ## The following objects are masked from 'package:lubridate':
+    ## 
+    ##     second, second<-
+    ## 
+    ## The following objects are masked from 'package:dplyr':
+    ## 
+    ##     first, rename
+    ## 
+    ## The following object is masked from 'package:tidyr':
+    ## 
+    ##     expand
+    ## 
+    ## The following object is masked from 'package:utils':
+    ## 
+    ##     findMatches
+    ## 
+    ## The following objects are masked from 'package:base':
+    ## 
+    ##     expand.grid, I, unname
+    ## 
+    ## Loading required package: IRanges
+    ## 
+    ## Attaching package: 'IRanges'
+    ## 
+    ## The following object is masked from 'package:lubridate':
+    ## 
+    ##     %within%
+    ## 
+    ## The following objects are masked from 'package:dplyr':
+    ## 
+    ##     collapse, desc, slice
+    ## 
+    ## The following object is masked from 'package:purrr':
+    ## 
+    ##     reduce
+    ## 
+    ## Loading required package: GenomicRanges
+    ## Loading required package: GenomeInfoDb
+    ## Loading required package: SummarizedExperiment
+    ## Loading required package: MatrixGenerics
+    ## Loading required package: matrixStats
+    ## 
+    ## Attaching package: 'matrixStats'
+    ## 
+    ## The following object is masked from 'package:dplyr':
+    ## 
+    ##     count
+    ## 
+    ## 
+    ## Attaching package: 'MatrixGenerics'
+    ## 
+    ## The following objects are masked from 'package:matrixStats':
+    ## 
+    ##     colAlls, colAnyNAs, colAnys, colAvgsPerRowSet, colCollapse,
+    ##     colCounts, colCummaxs, colCummins, colCumprods, colCumsums,
+    ##     colDiffs, colIQRDiffs, colIQRs, colLogSumExps, colMadDiffs,
+    ##     colMads, colMaxs, colMeans2, colMedians, colMins, colOrderStats,
+    ##     colProds, colQuantiles, colRanges, colRanks, colSdDiffs, colSds,
+    ##     colSums2, colTabulates, colVarDiffs, colVars, colWeightedMads,
+    ##     colWeightedMeans, colWeightedMedians, colWeightedSds,
+    ##     colWeightedVars, rowAlls, rowAnyNAs, rowAnys, rowAvgsPerColSet,
+    ##     rowCollapse, rowCounts, rowCummaxs, rowCummins, rowCumprods,
+    ##     rowCumsums, rowDiffs, rowIQRDiffs, rowIQRs, rowLogSumExps,
+    ##     rowMadDiffs, rowMads, rowMaxs, rowMeans2, rowMedians, rowMins,
+    ##     rowOrderStats, rowProds, rowQuantiles, rowRanges, rowRanks,
+    ##     rowSdDiffs, rowSds, rowSums2, rowTabulates, rowVarDiffs, rowVars,
+    ##     rowWeightedMads, rowWeightedMeans, rowWeightedMedians,
+    ##     rowWeightedSds, rowWeightedVars
+    ## 
+    ## Loading required package: Biobase
+    ## Welcome to Bioconductor
+    ## 
+    ##     Vignettes contain introductory material; view with
+    ##     'browseVignettes()'. To cite Bioconductor, see
+    ##     'citation("Biobase")', and for packages 'citation("pkgname")'.
+    ## 
+    ## 
+    ## Attaching package: 'Biobase'
+    ## 
+    ## The following object is masked from 'package:MatrixGenerics':
+    ## 
+    ##     rowMedians
+    ## 
+    ## The following objects are masked from 'package:matrixStats':
+    ## 
+    ##     anyMissing, rowMedians
+
+``` r
 library(ComplexHeatmap)
+```
+
+    ## Loading required package: grid
+    ## ========================================
+    ## ComplexHeatmap version 2.20.0
+    ## Bioconductor page: http://bioconductor.org/packages/ComplexHeatmap/
+    ## Github page: https://github.com/jokergoo/ComplexHeatmap
+    ## Documentation: http://jokergoo.github.io/ComplexHeatmap-reference
+    ## 
+    ## If you use it in published research, please cite either one:
+    ## - Gu, Z. Complex Heatmap Visualization. iMeta 2022.
+    ## - Gu, Z. Complex heatmaps reveal patterns and correlations in multidimensional 
+    ##     genomic data. Bioinformatics 2016.
+    ## 
+    ## 
+    ## The new InteractiveComplexHeatmap package can directly export static 
+    ## complex heatmaps into an interactive Shiny app with zero effort. Have a try!
+    ## 
+    ## This message can be suppressed by:
+    ##   suppressPackageStartupMessages(library(ComplexHeatmap))
+    ## ========================================
+
+``` r
 library(IHW)
+```
+
+    ## 
+    ## Attaching package: 'IHW'
+    ## 
+    ## The following object is masked from 'package:ggplot2':
+    ## 
+    ##     alpha
+
+``` r
 library(RColorBrewer)
 library(FactoMineR)   # For PCA and factor analysis
 library(factoextra)   # For PCA visualization
+```
+
+    ## Welcome! Want to learn more? See two factoextra-related books at https://goo.gl/ve3WBa
+
+``` r
 library(psych)        # For factor analysis
+```
+
+    ## 
+    ## Attaching package: 'psych'
+    ## 
+    ## The following object is masked from 'package:IHW':
+    ## 
+    ##     alpha
+    ## 
+    ## The following object is masked from 'package:SummarizedExperiment':
+    ## 
+    ##     distance
+    ## 
+    ## The following object is masked from 'package:GenomicRanges':
+    ## 
+    ##     distance
+    ## 
+    ## The following objects are masked from 'package:IRanges':
+    ## 
+    ##     distance, reflect
+    ## 
+    ## The following objects are masked from 'package:ggplot2':
+    ## 
+    ##     %+%, alpha
+
+``` r
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+``` r
 source("../functions/plotting_fxns.R")
 theme_set(theme_Publication())
 ```
 
-### [Import Data]{.underline}
+    ## 
+    ## Attaching package: 'ggthemes'
 
-```{r}
+    ## The following object is masked from 'package:cowplot':
+    ## 
+    ##     theme_map
+
+### <u>Import Data</u>
+
+``` r
 data <- read.csv("../processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = "X")
 
 metadata <- read_csv("../processing_outs/processed_metadata_SIG06.csv")
+```
 
+    ## Rows: 330 Columns: 7
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr (5): sample_ID, treatment, replicate, plate, well
+    ## dbl (2): nFeature_RNA, nCount_RNA
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # import feature names
 featureNames <- read_csv("../processing_outs/featureNames_SIG06.csv")
+```
+
+    ## Rows: 57186 Columns: 3
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr (3): ensembl_ID, gene, category
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 featureNames <- select(featureNames, -category)
 
 res_viral <- read.csv("../analysis_outs/res_viral.csv")
 ```
 
-### [Normalization and Diagnostic Plots]{.underline}
+### <u>Normalization and Diagnostic Plots</u>
 
-```{r}
+``` r
 # prepare metadata for DESeq
 metaDF <- as.data.frame(metadata[,-1])
 rownames(metaDF) <- metadata$sample_ID
@@ -58,13 +313,13 @@ data <- data[,rownames(metaDF)]
 
 #### Read normalized counts
 
-```{r}
+``` r
 normCounts <- read.csv("../analysis_outs/counts_norm_DEseq2.csv")
 ```
 
 #### Create DESeq object and VST normalized counts
 
-```{r}
+``` r
 # import dds object
 dds <- readRDS("/Users/izumpano/Desktop/Eric Analyses/SIG06/analysis_outs/dds_object_SIG06.rds")
 
@@ -74,7 +329,7 @@ norm_counts <- assay(vst)
 
 ### Filter only highly variable genes
 
-```{r}
+``` r
 library(matrixStats)
 row_variance <- rowVars(norm_counts)
 hvgs <- norm_counts[row_variance > quantile(row_variance, 0.75), ]
@@ -82,7 +337,7 @@ hvgs <- norm_counts[row_variance > quantile(row_variance, 0.75), ]
 
 #### Scaled data
 
-```{r}
+``` r
 scaled_data <- t(scale(t(hvgs)))
 ```
 
@@ -90,7 +345,7 @@ scaled_data <- t(scale(t(hvgs)))
 
 #### Run & Visualize PCA
 
-```{r, fig.height = 12, fig.width=20}
+``` r
 # # PCA
 # pca <- prcomp(t(norm_counts)[, 1:8], scale. = TRUE)
 # pca_hvg <- prcomp(hvgs[, 1:8], scale. = TRUE)
@@ -111,14 +366,13 @@ scaled_data <- t(scale(t(hvgs)))
 #   geom_point(size = 3) +
 #   theme_minimal() +
 #   labs(title = "PCA on Highly Variable Genes")
-
 ```
 
 ### Gene set enrichment analysis
 
-#### All genes 
+#### All genes
 
-```{r}
+``` r
 # pc1_loadings <- data.frame(
 #   gene = rownames(pca$rotation),
 #   value = pca$rotation[, "PC1"]
@@ -174,8 +428,7 @@ scaled_data <- t(scale(t(hvgs)))
 # )
 ```
 
-
-```{r}
+``` r
 # dge_mapped_df <- data.frame(
 #   gene_symbol = mapIds(
 #     # Replace with annotation package for the organism relevant to your data
@@ -198,15 +451,57 @@ scaled_data <- t(scale(t(hvgs)))
 #   # dplyr::inner_join(res_viral, by = c("Ensembl" = "Gene")))
 ```
 
-
-
 ### Sparce PCA
 
 #### 50 genes per component
 
-```{r, fig.height = 12, fig.width=20}
+``` r
 library(mixOmics)
+```
+
+    ## Loading required package: MASS
+
+    ## 
+    ## Attaching package: 'MASS'
+
+    ## The following object is masked from 'package:patchwork':
+    ## 
+    ##     area
+
+    ## The following object is masked from 'package:dplyr':
+    ## 
+    ##     select
+
+    ## Loading required package: lattice
+
+    ## 
+    ## Loaded mixOmics 6.28.0
+    ## Thank you for using mixOmics!
+    ## Tutorials: http://mixomics.org
+    ## Bookdown vignette: https://mixomicsteam.github.io/Bookdown
+    ## Questions, issues: Follow the prompts at http://mixomics.org/contact-us
+    ## Cite us:  citation('mixOmics')
+
+    ## 
+    ## Attaching package: 'mixOmics'
+
+    ## The following object is masked from 'package:psych':
+    ## 
+    ##     pca
+
+    ## The following object is masked from 'package:purrr':
+    ## 
+    ##     map
+
+``` r
 library(GGally)
+```
+
+    ## Registered S3 method overwritten by 'GGally':
+    ##   method from   
+    ##   +.gg   ggplot2
+
+``` r
 library(ggrepel)
 
 if (ncol(hvgs) == 330) {
@@ -247,7 +542,14 @@ ggplot(spca_scores_30, aes(x = PC1, y = PC2, color = group)) +
     x = paste0("PC1 (", round(variance_explained[1], 2), "%)"),
     y = paste0("PC2 (", round(variance_explained[2], 2), "%)")
   ) + geom_text_repel(aes(label = label), show.legend = FALSE, max.overlaps = Inf)
+```
 
+    ## Warning: Removed 288 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+``` r
 # Plot PC3 vs PC4
 ggplot(spca_scores_30, aes(x = PC3, y = PC4, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -256,7 +558,14 @@ ggplot(spca_scores_30, aes(x = PC3, y = PC4, color = group)) +
     x = paste0("PC3 (", round(variance_explained[3], 2), "%)"),
     y = paste0("PC4 (", round(variance_explained[4], 2), "%)")
   ) + geom_text_repel(aes(label = label2), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 301 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-11-2.png)<!-- -->
+
+``` r
 # Plot PC5 vs PC6
 ggplot(spca_scores_30, aes(x = PC5, y = PC6, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -265,7 +574,14 @@ ggplot(spca_scores_30, aes(x = PC5, y = PC6, color = group)) +
     x = paste0("PC5 (", round(variance_explained[5], 2), "%)"),
     y = paste0("PC6 (", round(variance_explained[6], 2), "%)")
   ) + geom_text_repel(aes(label = label3), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 295 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-11-3.png)<!-- -->
+
+``` r
 # Plot PC7 vs PC8
 ggplot(spca_scores_30, aes(x = PC7, y = PC8, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -274,7 +590,14 @@ ggplot(spca_scores_30, aes(x = PC7, y = PC8, color = group)) +
     x = paste0("PC7 (", round(variance_explained[7], 2), "%)"),
     y = paste0("PC8 (", round(variance_explained[8], 2), "%)")
   ) + geom_text_repel(aes(label = label4), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 297 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-11-4.png)<!-- -->
+
+``` r
 # Plot PC9 vs PC10
 ggplot(spca_scores_30, aes(x = PC9, y = PC10, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -283,7 +606,14 @@ ggplot(spca_scores_30, aes(x = PC9, y = PC10, color = group)) +
     x = paste0("PC9 (", round(variance_explained[9], 2), "%)"),
     y = paste0("PC10 (", round(variance_explained[10], 2), "%)")
   ) + geom_text_repel(aes(label = label5), show.legend = FALSE, max.overlaps = Inf)
+```
 
+    ## Warning: Removed 295 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-11-5.png)<!-- -->
+
+``` r
 # Plot PC11 vs PC12
 ggplot(spca_scores_30, aes(x = PC11, y = PC12, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -292,7 +622,11 @@ ggplot(spca_scores_30, aes(x = PC11, y = PC12, color = group)) +
     x = paste0("PC11 (", round(variance_explained[11], 2), "%)"),
     y = paste0("PC12 (", round(variance_explained[12], 2), "%)")
   ) #+ geom_text_repel(aes(label = label6), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-11-6.png)<!-- -->
+
+``` r
 # Plot PC13 vs PC14
 ggplot(spca_scores_30, aes(x = PC13, y = PC14, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -301,7 +635,14 @@ ggplot(spca_scores_30, aes(x = PC13, y = PC14, color = group)) +
     x = paste0("PC13 (", round(variance_explained[13], 2), "%)"),
     y = paste0("PC14 (", round(variance_explained[14], 2), "%)")
   ) + geom_text_repel(aes(label = label7), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 306 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-11-7.png)<!-- -->
+
+``` r
 # Plot PC15 vs PC16
 ggplot(spca_scores_30, aes(x = PC15, y = PC16, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -310,12 +651,16 @@ ggplot(spca_scores_30, aes(x = PC15, y = PC16, color = group)) +
     x = paste0("PC15 (", round(variance_explained[15], 2), "%)"),
     y = paste0("PC16 (", round(variance_explained[16], 2), "%)")
   ) + geom_text_repel(aes(label = label8), show.legend = FALSE, max.overlaps = Inf) 
-
 ```
+
+    ## Warning: Removed 321 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-11-8.png)<!-- -->
 
 #### 30 genes per component
 
-```{r, fig.height = 12, fig.width=20}
+``` r
 if (ncol(hvgs) == 330) {
   hvgs <- t(hvgs)
 }
@@ -352,7 +697,14 @@ ggplot(spca_scores_30, aes(x = PC1, y = PC2, color = group)) +
     x = paste0("PC1 (", round(variance_explained[1], 2), "%)"),
     y = paste0("PC2 (", round(variance_explained[2], 2), "%)")
   ) + geom_text_repel(aes(label = label), show.legend = FALSE, max.overlaps = Inf)
+```
 
+    ## Warning: Removed 288 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+
+``` r
 # Plot PC3 vs PC4
 ggplot(spca_scores_30, aes(x = PC3, y = PC4, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -361,7 +713,14 @@ ggplot(spca_scores_30, aes(x = PC3, y = PC4, color = group)) +
     x = paste0("PC3 (", round(variance_explained[3], 2), "%)"),
     y = paste0("PC4 (", round(variance_explained[4], 2), "%)")
   ) + geom_text_repel(aes(label = label2), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 308 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-12-2.png)<!-- -->
+
+``` r
 # Plot PC5 vs PC6
 ggplot(spca_scores_30, aes(x = PC5, y = PC6, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -370,7 +729,14 @@ ggplot(spca_scores_30, aes(x = PC5, y = PC6, color = group)) +
     x = paste0("PC5 (", round(variance_explained[5], 2), "%)"),
     y = paste0("PC6 (", round(variance_explained[6], 2), "%)")
   ) + geom_text_repel(aes(label = label3), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 297 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-12-3.png)<!-- -->
+
+``` r
 # Plot PC7 vs PC8
 ggplot(spca_scores_30, aes(x = PC7, y = PC8, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -379,7 +745,14 @@ ggplot(spca_scores_30, aes(x = PC7, y = PC8, color = group)) +
     x = paste0("PC7 (", round(variance_explained[7], 2), "%)"),
     y = paste0("PC8 (", round(variance_explained[8], 2), "%)")
   ) + geom_text_repel(aes(label = label4), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 279 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-12-4.png)<!-- -->
+
+``` r
 # Plot PC9 vs PC10
 ggplot(spca_scores_30, aes(x = PC9, y = PC10, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -388,7 +761,14 @@ ggplot(spca_scores_30, aes(x = PC9, y = PC10, color = group)) +
     x = paste0("PC9 (", round(variance_explained[9], 2), "%)"),
     y = paste0("PC10 (", round(variance_explained[10], 2), "%)")
   ) + geom_text_repel(aes(label = label5), show.legend = FALSE, max.overlaps = Inf)
+```
 
+    ## Warning: Removed 299 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-12-5.png)<!-- -->
+
+``` r
 # Plot PC11 vs PC12
 ggplot(spca_scores_30, aes(x = PC11, y = PC12, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -397,7 +777,14 @@ ggplot(spca_scores_30, aes(x = PC11, y = PC12, color = group)) +
     x = paste0("PC11 (", round(variance_explained[11], 2), "%)"),
     y = paste0("PC12 (", round(variance_explained[12], 2), "%)")
   ) + geom_text_repel(aes(label = label6), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 304 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-12-6.png)<!-- -->
+
+``` r
 # Plot PC13 vs PC14
 ggplot(spca_scores_30, aes(x = PC13, y = PC14, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -406,7 +793,14 @@ ggplot(spca_scores_30, aes(x = PC13, y = PC14, color = group)) +
     x = paste0("PC13 (", round(variance_explained[13], 2), "%)"),
     y = paste0("PC14 (", round(variance_explained[14], 2), "%)")
   ) + geom_text_repel(aes(label = label7), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 318 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-12-7.png)<!-- -->
+
+``` r
 # Plot PC15 vs PC16
 ggplot(spca_scores_30, aes(x = PC15, y = PC16, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -417,10 +811,14 @@ ggplot(spca_scores_30, aes(x = PC15, y = PC16, color = group)) +
   ) + geom_text_repel(aes(label = label8), show.legend = FALSE, max.overlaps = Inf) 
 ```
 
+    ## Warning: Removed 321 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-12-8.png)<!-- -->
 
 #### 10 genes per component
 
-```{r, fig.height = 12, fig.width=20}
+``` r
 if (ncol(hvgs) == 310) {
   hvgs <- t(hvgs)
 }
@@ -457,7 +855,14 @@ ggplot(spca_scores_10, aes(x = PC1, y = PC2, color = group)) +
     x = paste0("PC1 (", round(variance_explained[1], 2), "%)"),
     y = paste0("PC2 (", round(variance_explained[2], 2), "%)")
   ) + geom_text_repel(aes(label = label), show.legend = FALSE, max.overlaps = Inf)
+```
 
+    ## Warning: Removed 299 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+
+``` r
 # Plot PC3 vs PC4
 ggplot(spca_scores_10, aes(x = PC3, y = PC4, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -466,7 +871,14 @@ ggplot(spca_scores_10, aes(x = PC3, y = PC4, color = group)) +
     x = paste0("PC3 (", round(variance_explained[3], 2), "%)"),
     y = paste0("PC4 (", round(variance_explained[4], 2), "%)")
   ) + geom_text_repel(aes(label = label2), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 317 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-13-2.png)<!-- -->
+
+``` r
 # Plot PC5 vs PC6
 ggplot(spca_scores_10, aes(x = PC5, y = PC6, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -475,7 +887,14 @@ ggplot(spca_scores_10, aes(x = PC5, y = PC6, color = group)) +
     x = paste0("PC5 (", round(variance_explained[5], 2), "%)"),
     y = paste0("PC6 (", round(variance_explained[6], 2), "%)")
   ) + geom_text_repel(aes(label = label3), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 310 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-13-3.png)<!-- -->
+
+``` r
 # Plot PC7 vs PC8
 ggplot(spca_scores_10, aes(x = PC7, y = PC8, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -484,7 +903,14 @@ ggplot(spca_scores_10, aes(x = PC7, y = PC8, color = group)) +
     x = paste0("PC7 (", round(variance_explained[7], 2), "%)"),
     y = paste0("PC8 (", round(variance_explained[8], 2), "%)")
   ) + geom_text_repel(aes(label = label4), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 301 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-13-4.png)<!-- -->
+
+``` r
 # Plot PC9 vs PC10
 ggplot(spca_scores_10, aes(x = PC9, y = PC10, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -493,7 +919,14 @@ ggplot(spca_scores_10, aes(x = PC9, y = PC10, color = group)) +
     x = paste0("PC9 (", round(variance_explained[9], 2), "%)"),
     y = paste0("PC10 (", round(variance_explained[10], 2), "%)")
   ) + geom_text_repel(aes(label = label5), show.legend = FALSE, max.overlaps = Inf)
+```
 
+    ## Warning: Removed 304 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-13-5.png)<!-- -->
+
+``` r
 # Plot PC11 vs PC12
 ggplot(spca_scores_10, aes(x = PC11, y = PC12, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -502,7 +935,14 @@ ggplot(spca_scores_10, aes(x = PC11, y = PC12, color = group)) +
     x = paste0("PC11 (", round(variance_explained[11], 2), "%)"),
     y = paste0("PC12 (", round(variance_explained[12], 2), "%)")
   ) + geom_text_repel(aes(label = label6), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 315 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-13-6.png)<!-- -->
+
+``` r
 # Plot PC13 vs PC14
 ggplot(spca_scores_10, aes(x = PC13, y = PC14, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -511,7 +951,14 @@ ggplot(spca_scores_10, aes(x = PC13, y = PC14, color = group)) +
     x = paste0("PC13 (", round(variance_explained[13], 2), "%)"),
     y = paste0("PC14 (", round(variance_explained[14], 2), "%)")
   ) + geom_text_repel(aes(label = label7), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 318 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-13-7.png)<!-- -->
+
+``` r
 # Plot PC15 vs PC16
 ggplot(spca_scores_10, aes(x = PC15, y = PC16, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -522,9 +969,14 @@ ggplot(spca_scores_10, aes(x = PC15, y = PC16, color = group)) +
   ) + geom_text_repel(aes(label = label8), show.legend = FALSE, max.overlaps = Inf) 
 ```
 
+    ## Warning: Removed 330 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-13-8.png)<!-- -->
+
 #### 5 genes per component
 
-```{r, fig.height = 12, fig.width=20}
+``` r
 if (ncol(hvgs) == 330) {
   hvgs <- t(hvgs)
 }
@@ -561,7 +1013,14 @@ ggplot(spca_scores_5, aes(x = PC1, y = PC2, color = group)) +
     x = paste0("PC1 (", round(variance_explained[1], 2), "%)"),
     y = paste0("PC2 (", round(variance_explained[2], 2), "%)")
   ) + geom_text_repel(aes(label = label), show.legend = FALSE, max.overlaps = Inf)
+```
 
+    ## Warning: Removed 306 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+
+``` r
 # Plot PC3 vs PC4
 ggplot(spca_scores_5, aes(x = PC3, y = PC4, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -570,7 +1029,14 @@ ggplot(spca_scores_5, aes(x = PC3, y = PC4, color = group)) +
     x = paste0("PC3 (", round(variance_explained[3], 2), "%)"),
     y = paste0("PC4 (", round(variance_explained[4], 2), "%)")
   ) + geom_text_repel(aes(label = label2), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 318 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-14-2.png)<!-- -->
+
+``` r
 # Plot PC5 vs PC6
 ggplot(spca_scores_5, aes(x = PC5, y = PC6, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -579,7 +1045,14 @@ ggplot(spca_scores_5, aes(x = PC5, y = PC6, color = group)) +
     x = paste0("PC5 (", round(variance_explained[5], 2), "%)"),
     y = paste0("PC6 (", round(variance_explained[6], 2), "%)")
   ) + geom_text_repel(aes(label = label3), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 317 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-14-3.png)<!-- -->
+
+``` r
 # Plot PC7 vs PC8
 ggplot(spca_scores_5, aes(x = PC7, y = PC8, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -588,7 +1061,14 @@ ggplot(spca_scores_5, aes(x = PC7, y = PC8, color = group)) +
     x = paste0("PC7 (", round(variance_explained[7], 2), "%)"),
     y = paste0("PC8 (", round(variance_explained[8], 2), "%)")
   ) + geom_text_repel(aes(label = label4), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 308 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-14-4.png)<!-- -->
+
+``` r
 # Plot PC9 vs PC10
 ggplot(spca_scores_5, aes(x = PC9, y = PC10, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -597,7 +1077,14 @@ ggplot(spca_scores_5, aes(x = PC9, y = PC10, color = group)) +
     x = paste0("PC9 (", round(variance_explained[9], 2), "%)"),
     y = paste0("PC10 (", round(variance_explained[10], 2), "%)")
   ) + geom_text_repel(aes(label = label5), show.legend = FALSE, max.overlaps = Inf)
+```
 
+    ## Warning: Removed 305 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-14-5.png)<!-- -->
+
+``` r
 # Plot PC11 vs PC12
 ggplot(spca_scores_5, aes(x = PC11, y = PC12, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -606,7 +1093,14 @@ ggplot(spca_scores_5, aes(x = PC11, y = PC12, color = group)) +
     x = paste0("PC11 (", round(variance_explained[11], 2), "%)"),
     y = paste0("PC12 (", round(variance_explained[12], 2), "%)")
   ) + geom_text_repel(aes(label = label6), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 330 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-14-6.png)<!-- -->
+
+``` r
 # Plot PC13 vs PC14
 ggplot(spca_scores_5, aes(x = PC13, y = PC14, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -615,7 +1109,14 @@ ggplot(spca_scores_5, aes(x = PC13, y = PC14, color = group)) +
     x = paste0("PC13 (", round(variance_explained[13], 2), "%)"),
     y = paste0("PC14 (", round(variance_explained[14], 2), "%)")
   ) + geom_text_repel(aes(label = label7), show.legend = FALSE, max.overlaps = Inf) 
+```
 
+    ## Warning: Removed 323 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-14-7.png)<!-- -->
+
+``` r
 # Plot PC15 vs PC16
 ggplot(spca_scores_5, aes(x = PC15, y = PC16, color = group)) +
   geom_point(size = 3, alpha = 0.7) +
@@ -626,16 +1127,20 @@ ggplot(spca_scores_5, aes(x = PC15, y = PC16, color = group)) +
   ) + geom_text_repel(aes(label = label8), show.legend = FALSE, max.overlaps = Inf) 
 ```
 
+    ## Warning: Removed 330 rows containing missing values or values outside the scale range
+    ## (`geom_text_repel()`).
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-14-8.png)<!-- -->
+
 # Fit LM for each PC
 
-#make csv with all of the loadings for each pc
+\#make csv with all of the loadings for each pc
 
 # for each pc, make boxplot of pc component
 
 # try with different numbers of genes per component
 
-
-```{r, fig.height=8, fig.width = 14}
+``` r
 # Helper function to generate boxplot for a specific PC
 generate_boxplot <- function(pc_index, spca_res, metadata) {
   # Extract the PC scores for the specified PC
@@ -676,11 +1181,93 @@ for (pc_index in 1:16) {
 
 # Optionally: Print the first plot to check
 print(pc_plots)
+```
 
+    ## [[1]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+
+    ## 
+    ## [[2]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-2.png)<!-- -->
+
+    ## 
+    ## [[3]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-3.png)<!-- -->
+
+    ## 
+    ## [[4]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-4.png)<!-- -->
+
+    ## 
+    ## [[5]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-5.png)<!-- -->
+
+    ## 
+    ## [[6]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-6.png)<!-- -->
+
+    ## 
+    ## [[7]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-7.png)<!-- -->
+
+    ## 
+    ## [[8]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-8.png)<!-- -->
+
+    ## 
+    ## [[9]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-9.png)<!-- -->
+
+    ## 
+    ## [[10]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-10.png)<!-- -->
+
+    ## 
+    ## [[11]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-11.png)<!-- -->
+
+    ## 
+    ## [[12]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-12.png)<!-- -->
+
+    ## 
+    ## [[13]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-13.png)<!-- -->
+
+    ## 
+    ## [[14]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-14.png)<!-- -->
+
+    ## 
+    ## [[15]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-15.png)<!-- -->
+
+    ## 
+    ## [[16]]
+
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-15-16.png)<!-- -->
+
+``` r
 # To access any plot, use pc_plots[[pc_index]], for example:
 # print(pc_plots[[2]]) for PC2 plot
 ```
-```{r}
+
+``` r
 # Helper function to generate dot plot for a specific PC
 generate_dotplot <- function(pc_index, spca_res, metadata) {
   # Extract the PC scores for the specified PC
@@ -720,14 +1307,18 @@ for (pc_index in 1:16) {
 
 # Optionally: Print the first plot to check
 print(pc_dot_plots[[2]])
+```
 
+![](SIG06_Factor_Analysis_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
+
+``` r
 # To access any plot, use pc_dot_plots[[pc_index]], for example:
 # print(pc_dot_plots[[2]]) for PC2 plot
 ```
 
 ### Extract PC loadings and save to csv
 
-```{r}
+``` r
 # Helper function to save loadings of all PCs to a CSV file
 save_spca_loadings_to_csv <- function(spca_res, output_file = "spca_loadings.csv") {
   # Extract the loadings matrix from the SPCA result
@@ -763,4 +1354,3 @@ save_spca_loadings_to_csv <- function(spca_res, output_file = "spca_loadings.csv
 # save_spca_loadings_to_csv(spca_res = spca_res10, "../analysis_outs/spca_loadings_10genes.csv")
 # save_spca_loadings_to_csv(spca_res = spca_res5, "../analysis_outs/spca_loadings_5genes.csv")
 ```
-
