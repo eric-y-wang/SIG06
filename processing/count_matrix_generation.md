@@ -1,7 +1,7 @@
 SIG06 RNAseq Processing
 ================
 Eric Y. Wang
-2024-11-18
+2024-12-07
 
 - [<u>Import Data</u>](#import-data)
 - [<u>Sample Level QC</u>](#sample-level-qc)
@@ -37,6 +37,8 @@ library(cowplot)
 ``` r
 library(patchwork)
 ```
+
+    ## Warning: package 'patchwork' was built under R version 4.4.2
 
     ## 
     ## Attaching package: 'patchwork'
@@ -115,11 +117,18 @@ library(DESeq2)
     ## 
     ##     reduce
     ## 
+    ## The following object is masked from 'package:grDevices':
+    ## 
+    ##     windows
+    ## 
     ## Loading required package: GenomicRanges
     ## Loading required package: GenomeInfoDb
     ## Loading required package: SummarizedExperiment
     ## Loading required package: MatrixGenerics
     ## Loading required package: matrixStats
+
+    ## Warning: package 'matrixStats' was built under R version 4.4.2
+
     ## 
     ## Attaching package: 'matrixStats'
     ## 
@@ -170,6 +179,8 @@ library(DESeq2)
 library(Matrix)
 ```
 
+    ## Warning: package 'Matrix' was built under R version 4.4.2
+
     ## 
     ## Attaching package: 'Matrix'
     ## 
@@ -186,7 +197,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ``` r
-source("../functions/plotting_fxns.R")
+source("functions/plotting_fxns.R")
 theme_set(theme_Publication())
 ```
 
@@ -199,10 +210,10 @@ theme_set(theme_Publication())
 
 ### <u>Import Data</u>
 
-Create counts matrix using *UMI collapsed data*
+#### Create counts matrix using *UMI collapsed data*
 
 ``` r
-matrix_dir <- "../star_output/"
+matrix_dir <- "star_output/"
 
 load_matrix <- function(sample){
   # import UMI count matrix
@@ -319,7 +330,7 @@ mat_SIG06_4 <- load_matrix("SIG06_4_")
 Create metadata assignments
 
 ``` r
-meta1 <- read_csv("../metadata/lib1_metadata.csv")
+meta1 <- read_csv("metadata/lib1_metadata.csv")
 ```
 
     ## Rows: 96 Columns: 5
@@ -331,7 +342,7 @@ meta1 <- read_csv("../metadata/lib1_metadata.csv")
     ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
 
 ``` r
-meta2 <- read_csv("../metadata/lib2_metadata.csv")
+meta2 <- read_csv("metadata/lib2_metadata.csv")
 ```
 
     ## Rows: 96 Columns: 5
@@ -343,7 +354,7 @@ meta2 <- read_csv("../metadata/lib2_metadata.csv")
     ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
 
 ``` r
-meta3 <- read_csv("../metadata/lib3_metadata.csv")
+meta3 <- read_csv("metadata/lib3_metadata.csv")
 ```
 
     ## Rows: 96 Columns: 5
@@ -355,7 +366,7 @@ meta3 <- read_csv("../metadata/lib3_metadata.csv")
     ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
 
 ``` r
-meta4 <- read_csv("../metadata/lib4_metadata.csv")
+meta4 <- read_csv("metadata/lib4_metadata.csv")
 ```
 
     ## Rows: 96 Columns: 5
@@ -440,38 +451,232 @@ mat <- cbind(mat1_assigned,
              mat4_assigned)
 ```
 
+#### Create Raw Counts Matrix
+
+``` r
+matrix_dir <- "star_output/"
+
+load_matrix_counts <- function(sample){
+  # import UMI count matrix
+  mat <- readMM(paste0(matrix_dir,sample,"Solo.out/Gene/raw/umiDedup-NoDedup.mtx")) %>%
+    as.matrix() %>%
+    as.data.frame()
+  
+  # import barcode names
+  barcodeNames <- read_tsv(paste0(matrix_dir,sample,"Solo.out/Gene/raw/barcodes.tsv"), col_names = F)
+  colnames(barcodeNames) <- "barcode"
+  
+  # import feature names
+  featureNames <- read_tsv(paste0(matrix_dir,sample,"Solo.out/Gene/raw/features.tsv"), col_names = F)
+  colnames(featureNames) <- c("ensembl_ID","gene","category")
+  
+  colnames(mat) <- barcodeNames$barcode
+  rownames(mat) <- featureNames$ensembl_ID
+  
+  return(mat)
+}
+
+# import feature names
+featureNames <- read_tsv(paste0(matrix_dir,"SIG06_1_Solo.out/Gene/raw/features.tsv"), col_names = F)
+```
+
+    ## Rows: 57186 Columns: 3
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (3): X1, X2, X3
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
+colnames(featureNames) <- c("ensembl_ID","gene","category")
+```
+
+``` r
+mat_SIG06_1_counts <- load_matrix_counts("SIG06_1_")
+```
+
+    ## Rows: 96 Columns: 1
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (1): X1
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+    ## Rows: 57186 Columns: 3
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (3): X1, X2, X3
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
+mat_SIG06_2_counts <- load_matrix_counts("SIG06_2_")
+```
+
+    ## Rows: 96 Columns: 1
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (1): X1
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+    ## Rows: 57186 Columns: 3
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (3): X1, X2, X3
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
+mat_SIG06_3_counts <- load_matrix_counts("SIG06_3_")
+```
+
+    ## Rows: 96 Columns: 1
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (1): X1
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+    ## Rows: 57186 Columns: 3
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (3): X1, X2, X3
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
+mat_SIG06_4_counts <- load_matrix_counts("SIG06_4_")
+```
+
+    ## Rows: 96 Columns: 1
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (1): X1
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+    ## Rows: 57186 Columns: 3
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: "\t"
+    ## chr (3): X1, X2, X3
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+Create metadata assignments
+
+``` r
+mat1_assigned_counts <- assign_meta(meta1, mat_SIG06_1_counts)
+```
+
+    ## Joining with `by = join_by(barcode)`
+
+``` r
+mat2_assigned_counts <- assign_meta(meta2, mat_SIG06_2_counts)
+```
+
+    ## Joining with `by = join_by(barcode)`
+
+``` r
+mat3_assigned_counts <- assign_meta(meta3, mat_SIG06_3_counts)
+```
+
+    ## Joining with `by = join_by(barcode)`
+
+``` r
+mat4_assigned_counts <- assign_meta(meta4, mat_SIG06_4_counts)
+```
+
+    ## Joining with `by = join_by(barcode)`
+
+Check dimensions of matrices
+
+``` r
+dim(mat1_assigned_counts)
+```
+
+    ## [1] 57186    96
+
+``` r
+dim(mat2_assigned_counts)
+```
+
+    ## [1] 57186    96
+
+``` r
+dim(mat3_assigned_counts)
+```
+
+    ## [1] 57186    96
+
+``` r
+dim(mat4_assigned_counts)
+```
+
+    ## [1] 57186    42
+
+create combined matrix
+
+``` r
+mat_counts <- cbind(mat1_assigned_counts,
+             mat2_assigned_counts,
+             mat3_assigned_counts,
+             mat4_assigned_counts)
+```
+
 ### <u>Sample Level QC</u>
 
 ``` r
 sampleQC <- tibble(sample_ID = colnames(mat),
                    sample_ID2 = colnames(mat),
-                   nFeature_RNA = colSums(mat > 0),
-                   nCount_RNA = colSums(mat)) %>%
+                   gene_counts = colSums(mat > 0),
+                   umi_counts = colSums(mat),
+                   total_reads_counts = colSums(mat_counts),
+                   seq_saturation = 1-(colSums(mat)/colSums(mat_counts))) %>%
+                   # sequencing saturation = 1 - (n_deduped_reads / n_reads)
   separate(sample_ID2, into = c("treatment", "replicate", "plate","well"), sep = "_")
 ```
 
 ``` r
-p1 <- ggplot(sampleQC, aes(x = plate, y = nFeature_RNA, fill = plate)) +
+p1 <- ggplot(sampleQC, aes(x = plate, y = gene_counts, fill = plate)) +
   geom_boxplot() +
-  scale_fill_brewer(palette = "Dark2")
+  scale_fill_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
 
-p2 <- ggplot(sampleQC, aes(x = plate, y = nCount_RNA, fill = plate)) +
+p2 <- ggplot(sampleQC, aes(x = plate, y = umi_counts, fill = plate)) +
   geom_boxplot() +
-  scale_fill_brewer(palette = "Dark2")
+  scale_fill_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
 
-p1/p2
+p3 <- ggplot(sampleQC, aes(x = plate, y = total_reads_counts, fill = plate)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
+
+p4 <- ggplot(sampleQC, aes(x = plate, y = seq_saturation, fill = plate)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
+
+
+p1+p2+p3+p4+plot_layout(ncol = 4)
 ```
 
-![](count_matrix_generation_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+![](count_matrix_generation_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
 ``` r
-p1 <- ggplot(sampleQC, aes(x = treatment, y = nFeature_RNA, color = plate)) +
+p1 <- ggplot(sampleQC, aes(x = treatment, y = gene_counts, color = plate)) +
   geom_point() +
   scale_color_brewer(palette = "Dark2") +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
 
 
-p2 <- ggplot(sampleQC, aes(x = treatment, y = nCount_RNA, color = plate)) +
+p2 <- ggplot(sampleQC, aes(x = treatment, y = umi_counts, color = plate)) +
   geom_point() +
   scale_color_brewer(palette = "Dark2") +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
@@ -479,30 +684,39 @@ p2 <- ggplot(sampleQC, aes(x = treatment, y = nCount_RNA, color = plate)) +
 p1/p2
 ```
 
-![](count_matrix_generation_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+![](count_matrix_generation_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 ``` r
-p1 <- ggplot(sampleQC, aes(x = treatment, y = nFeature_RNA)) +
+p1 <- ggplot(sampleQC, aes(x = treatment, y = gene_counts)) +
   geom_boxplot() +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
 
 
-p2 <- ggplot(sampleQC, aes(x = treatment, y = nCount_RNA)) +
+p2 <- ggplot(sampleQC, aes(x = treatment, y = umi_counts)) +
   geom_boxplot() +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
 
+p3 <- ggplot(sampleQC, aes(x = treatment, y = seq_saturation)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
+
+p1/p2/p3
+```
+
+![](count_matrix_generation_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
+
+``` r
+p1 <- ggplot(sampleQC, aes(x = gene_counts, y = umi_counts)) +
+  geom_point() +
+  facet_wrap(~plate, ncol=4)
+
+p2 <- ggplot(sampleQC, aes(x = seq_saturation, y = total_reads_counts)) +
+  geom_point() +
+  facet_wrap(~plate, ncol=4)
 p1/p2
 ```
 
-![](count_matrix_generation_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
-
-``` r
-ggplot(sampleQC, aes(x = nFeature_RNA, y = nCount_RNA)) +
-  geom_point() +
-  facet_wrap(~plate)
-```
-
-![](count_matrix_generation_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+![](count_matrix_generation_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 ### <u>Process and export matrix</u>
 
@@ -522,7 +736,7 @@ paste0(sum(rowSums(mat > 0) == ncol(mat))," genes have counts > 0 in all samples
 # remove genes that are not expressed in any sample
 mat <- mat[rowSums(mat > 0) > 0,]
 
-write.csv(mat, "../processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = T)
-write_csv(sampleQC,"../processing_outs/processed_metadata_SIG06.csv")
-write_csv(featureNames,"../processing_outs/featureNames_SIG06.csv")
+#write.csv(mat, "processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = T)
+#write_csv(sampleQC,"processing_outs/processed_metadata_SIG06.csv")
+#write_csv(featureNames,"processing_outs/featureNames_SIG06.csv")
 ```

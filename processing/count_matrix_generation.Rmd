@@ -22,15 +22,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-source("../functions/plotting_fxns.R")
+source("functions/plotting_fxns.R")
 theme_set(theme_Publication())
 ```
 
 ### [Import Data]{.underline}
 
-Create counts matrix using *UMI collapsed data*
+#### Create counts matrix using *UMI collapsed data*
 ```{r}
-matrix_dir <- "../star_output/"
+matrix_dir <- "star_output/"
 
 load_matrix <- function(sample){
   # import UMI count matrix
@@ -66,10 +66,10 @@ mat_SIG06_4 <- load_matrix("SIG06_4_")
 
 Create metadata assignments
 ```{r}
-meta1 <- read_csv("../metadata/lib1_metadata.csv")
-meta2 <- read_csv("../metadata/lib2_metadata.csv")
-meta3 <- read_csv("../metadata/lib3_metadata.csv")
-meta4 <- read_csv("../metadata/lib4_metadata.csv")
+meta1 <- read_csv("metadata/lib1_metadata.csv")
+meta2 <- read_csv("metadata/lib2_metadata.csv")
+meta3 <- read_csv("metadata/lib3_metadata.csv")
+meta4 <- read_csv("metadata/lib4_metadata.csv")
 
 assign_meta <- function(meta, matrix){
   # merge barcode sample assignments with barcode names
@@ -108,40 +108,113 @@ mat <- cbind(mat1_assigned,
              mat4_assigned)
 ```
 
-### [Assess Sequencing Depth]{.underline}
+#### Create Raw Counts Matrix
 
+```{r}
+matrix_dir <- "star_output/"
 
+load_matrix_counts <- function(sample){
+  # import UMI count matrix
+  mat <- readMM(paste0(matrix_dir,sample,"Solo.out/Gene/raw/umiDedup-NoDedup.mtx")) %>%
+    as.matrix() %>%
+    as.data.frame()
+  
+  # import barcode names
+  barcodeNames <- read_tsv(paste0(matrix_dir,sample,"Solo.out/Gene/raw/barcodes.tsv"), col_names = F)
+  colnames(barcodeNames) <- "barcode"
+  
+  # import feature names
+  featureNames <- read_tsv(paste0(matrix_dir,sample,"Solo.out/Gene/raw/features.tsv"), col_names = F)
+  colnames(featureNames) <- c("ensembl_ID","gene","category")
+  
+  colnames(mat) <- barcodeNames$barcode
+  rownames(mat) <- featureNames$ensembl_ID
+  
+  return(mat)
+}
+
+# import feature names
+featureNames <- read_tsv(paste0(matrix_dir,"SIG06_1_Solo.out/Gene/raw/features.tsv"), col_names = F)
+colnames(featureNames) <- c("ensembl_ID","gene","category")
+```
+
+```{r}
+mat_SIG06_1_counts <- load_matrix_counts("SIG06_1_")
+mat_SIG06_2_counts <- load_matrix_counts("SIG06_2_")
+mat_SIG06_3_counts <- load_matrix_counts("SIG06_3_")
+mat_SIG06_4_counts <- load_matrix_counts("SIG06_4_")
+```
+
+Create metadata assignments
+```{r}
+mat1_assigned_counts <- assign_meta(meta1, mat_SIG06_1_counts)
+mat2_assigned_counts <- assign_meta(meta2, mat_SIG06_2_counts)
+mat3_assigned_counts <- assign_meta(meta3, mat_SIG06_3_counts)
+mat4_assigned_counts <- assign_meta(meta4, mat_SIG06_4_counts)
+```
+
+Check dimensions of matrices
+```{r}
+dim(mat1_assigned_counts)
+dim(mat2_assigned_counts)
+dim(mat3_assigned_counts)
+dim(mat4_assigned_counts)
+```
+
+create combined matrix
+```{r}
+mat_counts <- cbind(mat1_assigned_counts,
+             mat2_assigned_counts,
+             mat3_assigned_counts,
+             mat4_assigned_counts)
+```
 
 ### [Sample Level QC]{.underline}
 
 ```{r}
 sampleQC <- tibble(sample_ID = colnames(mat),
                    sample_ID2 = colnames(mat),
-                   nFeature_RNA = colSums(mat > 0),
-                   nCount_RNA = colSums(mat)) %>%
+                   gene_counts = colSums(mat > 0),
+                   umi_counts = colSums(mat),
+                   total_reads_counts = colSums(mat_counts),
+                   seq_saturation = 1-(colSums(mat)/colSums(mat_counts))) %>%
+                   # sequencing saturation = 1 - (n_deduped_reads / n_reads)
   separate(sample_ID2, into = c("treatment", "replicate", "plate","well"), sep = "_")
 ```
 
-```{r, fig.height=10, fig.width=8}
-p1 <- ggplot(sampleQC, aes(x = plate, y = nFeature_RNA, fill = plate)) +
+```{r, fig.height=4, fig.width=16}
+p1 <- ggplot(sampleQC, aes(x = plate, y = gene_counts, fill = plate)) +
   geom_boxplot() +
-  scale_fill_brewer(palette = "Dark2")
+  scale_fill_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
 
-p2 <- ggplot(sampleQC, aes(x = plate, y = nCount_RNA, fill = plate)) +
+p2 <- ggplot(sampleQC, aes(x = plate, y = umi_counts, fill = plate)) +
   geom_boxplot() +
-  scale_fill_brewer(palette = "Dark2")
+  scale_fill_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
 
-p1/p2
+p3 <- ggplot(sampleQC, aes(x = plate, y = total_reads_counts, fill = plate)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
+
+p4 <- ggplot(sampleQC, aes(x = plate, y = seq_saturation, fill = plate)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Dark2") +
+  theme(legend.position = "none")
+
+
+p1+p2+p3+p4+plot_layout(ncol = 4)
 ```
 
 ```{r, fig.height=10, fig.width=25}
-p1 <- ggplot(sampleQC, aes(x = treatment, y = nFeature_RNA, color = plate)) +
+p1 <- ggplot(sampleQC, aes(x = treatment, y = gene_counts, color = plate)) +
   geom_point() +
   scale_color_brewer(palette = "Dark2") +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
 
 
-p2 <- ggplot(sampleQC, aes(x = treatment, y = nCount_RNA, color = plate)) +
+p2 <- ggplot(sampleQC, aes(x = treatment, y = umi_counts, color = plate)) +
   geom_point() +
   scale_color_brewer(palette = "Dark2") +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
@@ -149,24 +222,34 @@ p2 <- ggplot(sampleQC, aes(x = treatment, y = nCount_RNA, color = plate)) +
 p1/p2
 ```
 
-```{r, fig.height=10, fig.width=25}
-p1 <- ggplot(sampleQC, aes(x = treatment, y = nFeature_RNA)) +
+```{r, fig.height=15, fig.width=25}
+p1 <- ggplot(sampleQC, aes(x = treatment, y = gene_counts)) +
   geom_boxplot() +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
 
 
-p2 <- ggplot(sampleQC, aes(x = treatment, y = nCount_RNA)) +
+p2 <- ggplot(sampleQC, aes(x = treatment, y = umi_counts)) +
   geom_boxplot() +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
 
+p3 <- ggplot(sampleQC, aes(x = treatment, y = seq_saturation)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust = 1))
+
+p1/p2/p3
+```
+
+```{r, fig.height=8, fig.width=12}
+p1 <- ggplot(sampleQC, aes(x = gene_counts, y = umi_counts)) +
+  geom_point() +
+  facet_wrap(~plate, ncol=4)
+
+p2 <- ggplot(sampleQC, aes(x = seq_saturation, y = total_reads_counts)) +
+  geom_point() +
+  facet_wrap(~plate, ncol=4)
 p1/p2
 ```
 
-```{r, fig.height=10, fig.width=10}
-ggplot(sampleQC, aes(x = nFeature_RNA, y = nCount_RNA)) +
-  geom_point() +
-  facet_wrap(~plate)
-```
 
 ### [Process and export matrix]{.underline}
 
@@ -179,9 +262,9 @@ paste0(sum(rowSums(mat > 0) == ncol(mat))," genes have counts > 0 in all samples
 # remove genes that are not expressed in any sample
 mat <- mat[rowSums(mat > 0) > 0,]
 
-write.csv(mat, "../processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = T)
-write_csv(sampleQC,"../processing_outs/processed_metadata_SIG06.csv")
-write_csv(featureNames,"../processing_outs/featureNames_SIG06.csv")
+#write.csv(mat, "processing_outs/count_matrix_umiDeDup_SIG06.csv", row.names = T)
+#write_csv(sampleQC,"processing_outs/processed_metadata_SIG06.csv")
+#write_csv(featureNames,"processing_outs/featureNames_SIG06.csv")
 ```
 
 
